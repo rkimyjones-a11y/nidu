@@ -1,13 +1,9 @@
 "use client";
 
-import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { SAMPLE_FAMILY } from "@/lib/family";
+import { useMemo, useState } from "react";
+import type { Member } from "@/lib/family";
 import {
-  fetchMenu,
   getWeekRange,
-  readCachedMenu,
-  writeCachedMenu,
   type GeneratedIngredient,
   type MenuResponse,
 } from "@/lib/menuApi";
@@ -21,6 +17,15 @@ import {
   type Category,
   type Ingredient,
 } from "@/lib/shopping";
+
+type Props = {
+  members: Member[];
+  menu: MenuResponse | null;
+  checked: Set<string>;
+  onCheckedChange: (next: Set<string>) => void;
+  onGoMenu: () => void;
+  onGoFamilia: () => void;
+};
 
 const toIngredients = (raw: GeneratedIngredient[]): Ingredient[] =>
   raw.map((r) => ({
@@ -36,11 +41,14 @@ const dishesFromMenu = (menu: MenuResponse): { ingredients: Ingredient[] }[] =>
     { ingredients: toIngredients(d.cena.ingredientes) },
   ]);
 
-export default function CompraPage() {
-  const [menu, setMenu] = useState<MenuResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [checked, setChecked] = useState<Set<string>>(new Set());
+export function CompraTab({
+  members,
+  menu,
+  checked,
+  onCheckedChange,
+  onGoMenu,
+  onGoFamilia,
+}: Props) {
   const [shareFeedback, setShareFeedback] = useState<string | null>(null);
 
   const week = useMemo(() => getWeekRange(new Date()), []);
@@ -48,34 +56,6 @@ export default function CompraPage() {
     () => formatWeekSentence(week.monday, week.sunday),
     [week],
   );
-
-  const generate = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await fetchMenu(SAMPLE_FAMILY);
-      setMenu(data);
-      writeCachedMenu(data);
-    } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "No hemos podido generar la lista. Vuelve a intentarlo.",
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    const cached = readCachedMenu();
-    if (cached) {
-      setMenu(cached);
-      setLoading(false);
-      return;
-    }
-    void generate();
-  }, [generate]);
 
   const grouped = useMemo(() => {
     const map = new Map<Category, Ingredient[]>();
@@ -98,12 +78,10 @@ export default function CompraPage() {
   );
 
   const toggle = (key: string) => {
-    setChecked((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
+    const next = new Set(checked);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    onCheckedChange(next);
   };
 
   const handleShare = async () => {
@@ -134,82 +112,91 @@ export default function CompraPage() {
     }
   };
 
+  const noFamily = members.length === 0;
+  const noMenu = !menu;
+
   return (
-    <div className="min-h-dvh bg-white">
-      <main className="mx-auto w-full max-w-xl px-5 pt-10 pb-32 sm:pt-16">
-        <header className="flex items-start justify-between gap-4">
-          <div className="min-w-0">
-            <h1 className="text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl">
-              La compra
-            </h1>
-            <p className="mt-2 text-base text-gray-600">{weekSentence}</p>
+    <main className="mx-auto w-full max-w-xl px-5 pt-10 pb-8 sm:pt-16">
+      <header className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <h1 className="text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl">
+            La compra
+          </h1>
+          <p className="mt-2 text-base text-gray-600">{weekSentence}</p>
+          {menu && (
             <p className="mt-1 text-sm font-medium text-green-700">
               {checked.size} de {total} productos
             </p>
-          </div>
+          )}
+        </div>
 
+        <button
+          type="button"
+          onClick={handleShare}
+          disabled={!menu}
+          aria-label="Compartir lista"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-700 shadow-sm transition-colors hover:border-green-600 hover:text-green-700 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <svg
+            aria-hidden
+            viewBox="0 0 24 24"
+            className="h-5 w-5"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <circle cx="18" cy="5" r="3" />
+            <circle cx="6" cy="12" r="3" />
+            <circle cx="18" cy="19" r="3" />
+            <line x1="8.6" y1="13.5" x2="15.4" y2="17.5" />
+            <line x1="15.4" y1="6.5" x2="8.6" y2="10.5" />
+          </svg>
+        </button>
+      </header>
+
+      {shareFeedback && (
+        <div
+          role="status"
+          className="mt-4 rounded-lg bg-green-50 px-3 py-2 text-sm font-medium text-green-700"
+        >
+          {shareFeedback}
+        </div>
+      )}
+
+      {noFamily && (
+        <div className="mt-10 rounded-2xl border border-dashed border-gray-200 bg-gray-50/60 px-5 py-10 text-center">
+          <p className="text-sm text-gray-600">
+            Cuéntanos quién come en casa para empezar tu lista.
+          </p>
           <button
             type="button"
-            onClick={handleShare}
-            disabled={!menu}
-            aria-label="Compartir lista"
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-700 shadow-sm transition-colors hover:border-green-600 hover:text-green-700 disabled:cursor-not-allowed disabled:opacity-50"
+            onClick={onGoFamilia}
+            className="mt-4 inline-flex rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700"
           >
-            <svg
-              aria-hidden
-              viewBox="0 0 24 24"
-              className="h-5 w-5"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <circle cx="18" cy="5" r="3" />
-              <circle cx="6" cy="12" r="3" />
-              <circle cx="18" cy="19" r="3" />
-              <line x1="8.6" y1="13.5" x2="15.4" y2="17.5" />
-              <line x1="15.4" y1="6.5" x2="8.6" y2="10.5" />
-            </svg>
+            Configurar mi familia
           </button>
-        </header>
+        </div>
+      )}
 
-        {shareFeedback && (
-          <div
-            role="status"
-            className="mt-4 rounded-lg bg-green-50 px-3 py-2 text-sm font-medium text-green-700"
+      {!noFamily && noMenu && (
+        <div className="mt-10 rounded-2xl border border-dashed border-gray-200 bg-gray-50/60 px-5 py-10 text-center">
+          <p className="text-sm text-gray-600">
+            Aún no has generado el menú de esta semana.
+          </p>
+          <button
+            type="button"
+            onClick={onGoMenu}
+            className="mt-4 inline-flex rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700"
           >
-            {shareFeedback}
-          </div>
-        )}
+            Generar mi menú
+          </button>
+        </div>
+      )}
 
-        {loading && !menu && (
-          <div className="mt-10 rounded-2xl border border-gray-100 bg-gray-50/60 px-5 py-12 text-center">
-            <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-green-200 border-t-green-600" />
-            <p className="mt-4 text-base font-medium text-gray-700">
-              Calculando tu lista…
-            </p>
-          </div>
-        )}
-
-        {error && !menu && (
-          <div
-            role="alert"
-            className="mt-6 rounded-2xl border border-red-100 bg-red-50 px-4 py-4 text-sm text-red-700"
-          >
-            <p className="font-semibold">No hemos podido cargar la lista.</p>
-            <p className="mt-1 text-red-600">{error}</p>
-            <button
-              type="button"
-              onClick={() => void generate()}
-              className="mt-3 inline-flex rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700"
-            >
-              Reintentar
-            </button>
-          </div>
-        )}
-
-        {menu && (
+      {menu && (
+        <>
           <section className="mt-8 space-y-6">
             {CATEGORY_ORDER.map((category) => {
               const items = grouped.get(category);
@@ -294,25 +281,12 @@ export default function CompraPage() {
               );
             })}
           </section>
-        )}
 
-        {menu && (
           <p className="mt-10 text-center text-xs text-gray-400">
             Lista generada por Nidú · nidu.app
           </p>
-        )}
-      </main>
-
-      <div className="fixed inset-x-0 bottom-0 border-t border-gray-100 bg-white/90 px-5 py-4 backdrop-blur">
-        <div className="mx-auto w-full max-w-xl">
-          <Link
-            href="/menu"
-            className="flex w-full items-center justify-center rounded-2xl bg-green-600 px-5 py-3.5 text-base font-semibold text-white shadow-sm transition-colors hover:bg-green-700"
-          >
-            ← Volver al menú
-          </Link>
-        </div>
-      </div>
-    </div>
+        </>
+      )}
+    </main>
   );
 }

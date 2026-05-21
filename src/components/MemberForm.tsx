@@ -5,6 +5,7 @@ import {
   DAYS,
   DAY_LABELS,
   RESTRICTIONS,
+  VEGANO_INCOMPATIBLE,
   type Age,
   type Day,
   type Member,
@@ -25,13 +26,31 @@ export function MemberForm({ onAdd, onCancel }: Props) {
 
   const toggleRestriction = (r: Restriction) => {
     setRestrictions((prev) => {
+      // "Sin alergias" es exclusiva con todo lo demás
       if (r === "sin alergias") {
         return prev.includes(r) ? [] : [r];
       }
-      const without = prev.filter((x) => x !== "sin alergias");
-      return without.includes(r)
-        ? without.filter((x) => x !== r)
-        : [...without, r];
+      let next = prev.filter((x) => x !== "sin alergias");
+
+      // "Vegano" excluye vegetariano / sin lactosa / sin huevo (redundantes)
+      if (r === "vegano") {
+        if (next.includes("vegano")) {
+          return next.filter((x) => x !== "vegano");
+        }
+        return [
+          ...next.filter((x) => !VEGANO_INCOMPATIBLE.includes(x)),
+          "vegano",
+        ];
+      }
+
+      // Si activan vegetariano/sin lactosa/sin huevo, retiran "vegano"
+      if (VEGANO_INCOMPATIBLE.includes(r)) {
+        next = next.filter((x) => x !== "vegano");
+      }
+
+      return next.includes(r)
+        ? next.filter((x) => x !== r)
+        : [...next, r];
     });
   };
 
@@ -117,26 +136,28 @@ export function MemberForm({ onAdd, onCancel }: Props) {
           <span className="block text-sm font-medium text-gray-800">
             Restricciones alimentarias
           </span>
-          <div className="mt-1.5 flex flex-wrap gap-2">
-            {RESTRICTIONS.map((r) => {
-              const selected = restrictions.includes(r);
-              return (
-                <button
-                  key={r}
-                  type="button"
-                  onClick={() => toggleRestriction(r)}
-                  className={
-                    "rounded-full border px-3 py-1.5 text-xs font-medium transition-colors " +
-                    (selected
-                      ? "border-green-600 bg-green-600 text-white"
-                      : "border-gray-200 bg-white text-gray-700 hover:border-gray-300")
-                  }
-                  aria-pressed={selected}
-                >
-                  {r}
-                </button>
-              );
-            })}
+          <div className="mt-1.5 max-h-36 overflow-y-auto pr-1">
+            <div className="flex flex-wrap gap-2 pb-0.5">
+              {RESTRICTIONS.map((r) => {
+                const selected = restrictions.includes(r);
+                return (
+                  <button
+                    key={r}
+                    type="button"
+                    onClick={() => toggleRestriction(r)}
+                    className={
+                      "rounded-full border px-3 py-1.5 text-xs font-medium capitalize transition-colors " +
+                      (selected
+                        ? "border-green-600 bg-green-600 text-white"
+                        : "border-gray-200 bg-white text-gray-700 hover:border-gray-300")
+                    }
+                    aria-pressed={selected}
+                  >
+                    {r}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
 

@@ -1,94 +1,81 @@
 "use client";
 
-import Link from "next/link";
-import { useState } from "react";
-import { MemberCard } from "@/components/MemberCard";
-import { MemberForm } from "@/components/MemberForm";
-import type { Member } from "@/lib/family";
+import { useCallback, useEffect, useState } from "react";
+import { BottomNav, type Tab } from "@/components/BottomNav";
+import { CompraTab } from "@/components/tabs/CompraTab";
+import { FamilyTab } from "@/components/tabs/FamilyTab";
+import { MenuTab } from "@/components/tabs/MenuTab";
+import { readFamily, writeFamily, type Member } from "@/lib/family";
+import {
+  readCachedMenu,
+  writeCachedMenu,
+  type MenuResponse,
+} from "@/lib/menuApi";
 
-export default function Home() {
+export default function App() {
+  const [hydrated, setHydrated] = useState(false);
   const [members, setMembers] = useState<Member[]>([]);
-  const [showForm, setShowForm] = useState(false);
+  const [menu, setMenu] = useState<MenuResponse | null>(null);
+  const [checked, setChecked] = useState<Set<string>>(new Set());
+  const [activeTab, setActiveTab] = useState<Tab>("familia");
 
-  const addMember = (m: Omit<Member, "id">) => {
-    setMembers((prev) => [
-      ...prev,
-      { ...m, id: crypto.randomUUID() },
-    ]);
-    setShowForm(false);
-  };
+  // Hidratar desde localStorage al montar
+  useEffect(() => {
+    const storedFamily = readFamily() ?? [];
+    const storedMenu = readCachedMenu();
+    setMembers(storedFamily);
+    setMenu(storedMenu);
+    // Si ya hay familia guardada, saltamos directamente al menú
+    if (storedFamily.length > 0) setActiveTab("menu");
+    setHydrated(true);
+  }, []);
 
-  const removeMember = (id: string) => {
-    setMembers((prev) => prev.filter((m) => m.id !== id));
-  };
+  // Persistir cambios en la familia
+  useEffect(() => {
+    if (!hydrated) return;
+    writeFamily(members);
+  }, [members, hydrated]);
 
-  const canContinue = members.length > 0;
+  // Persistir el menú generado para que ambas pestañas lo compartan
+  const updateMenu = useCallback((next: MenuResponse | null) => {
+    setMenu(next);
+    if (next) {
+      writeCachedMenu(next);
+    }
+  }, []);
+
+  // Antes de hidratar evitamos parpadeos sirviendo un esqueleto neutro
+  if (!hydrated) {
+    return <div className="min-h-dvh bg-white" />;
+  }
 
   return (
     <div className="min-h-dvh bg-white">
-      <main className="mx-auto w-full max-w-xl px-5 pt-10 pb-32 sm:pt-16">
-        <header>
-          <h1 className="text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl">
-            Tu familia
-          </h1>
-          <p className="mt-2 text-base text-gray-600">
-            Cuéntanos quién come en casa
-          </p>
-        </header>
-
-        <section className="mt-8 space-y-3">
-          {members.map((m) => (
-            <MemberCard key={m.id} member={m} onRemove={removeMember} />
-          ))}
-
-          {members.length === 0 && !showForm && (
-            <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50/60 px-5 py-10 text-center">
-              <p className="text-sm text-gray-500">
-                Aún no has añadido a nadie. Empieza por ti.
-              </p>
-            </div>
-          )}
-        </section>
-
-        <div className="mt-5">
-          {showForm ? (
-            <MemberForm
-              onAdd={addMember}
-              onCancel={() => setShowForm(false)}
-            />
-          ) : (
-            <button
-              type="button"
-              onClick={() => setShowForm(true)}
-              className="flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-gray-200 bg-white px-4 py-4 text-sm font-medium text-gray-700 transition-colors hover:border-green-600 hover:text-green-700"
-            >
-              <span aria-hidden className="text-lg leading-none">+</span>
-              Añadir miembro
-            </button>
-          )}
-        </div>
-      </main>
-
-      <div className="fixed inset-x-0 bottom-0 border-t border-gray-100 bg-white/90 px-5 py-4 backdrop-blur">
-        <div className="mx-auto w-full max-w-xl">
-          <Link
-            href="/menu"
-            aria-disabled={!canContinue}
-            tabIndex={canContinue ? 0 : -1}
-            onClick={(e) => {
-              if (!canContinue) e.preventDefault();
-            }}
-            className={
-              "flex w-full items-center justify-center rounded-2xl px-5 py-3.5 text-base font-semibold shadow-sm transition-colors " +
-              (canContinue
-                ? "bg-green-600 text-white hover:bg-green-700"
-                : "cursor-not-allowed bg-gray-100 text-gray-400")
-            }
-          >
-            Generar menú semanal
-          </Link>
-        </div>
+      <div className="pb-20">
+        {activeTab === "familia" && (
+          <FamilyTab members={members} onChange={setMembers} />
+        )}
+        {activeTab === "menu" && (
+          <MenuTab
+            members={members}
+            menu={menu}
+            onMenuChange={updateMenu}
+            onGoFamilia={() => setActiveTab("familia")}
+          />
+        )}
+        {activeTab === "compra" && (
+          <CompraTab
+            members={members}
+            menu={menu}
+            checked={checked}
+            onCheckedChange={setChecked}
+            onGoMenu={() => setActiveTab("menu")}
+            onGoFamilia={() => setActiveTab("familia")}
+          />
+        )}
       </div>
+
+      <BottomNav active={activeTab} onChange={setActiveTab} />
     </div>
   );
 }
