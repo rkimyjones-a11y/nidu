@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { BottomNav, type Tab } from "@/components/BottomNav";
+import { Logo } from "@/components/Logo";
 import { CompraTab } from "@/components/tabs/CompraTab";
 import { FamilyTab } from "@/components/tabs/FamilyTab";
 import { MenuTab } from "@/components/tabs/MenuTab";
@@ -164,6 +165,12 @@ export function AppShell({ familiaId, onLeave }: Props) {
 
   return (
     <div className="min-h-dvh bg-white">
+      <header className="sticky top-0 z-10 border-b border-gray-100 bg-white/90 backdrop-blur">
+        <div className="mx-auto flex w-full max-w-xl items-center px-5 py-2">
+          <Logo className="h-8 w-auto" />
+        </div>
+      </header>
+
       <div className="pb-20">
         {activeTab === "familia" && (
           <FamilyTab

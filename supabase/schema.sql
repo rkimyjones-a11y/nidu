@@ -39,8 +39,21 @@ create table if not exists menus (
   unique (familia_id, semana_inicio)
 );
 
--- Deshabilitar RLS por ahora (ACTIVAR EN PRODUCCIÓN)
-alter table familias disable row level security;
-alter table miembros disable row level security;
-alter table favoritos disable row level security;
-alter table menus disable row level security;
+-- Las nuevas API keys de Supabase (sb_publishable_...) SIEMPRE aplican RLS,
+-- así que en lugar de desactivarlo lo activamos con políticas permisivas.
+-- ⚠️ ABIERTO PARA EL MVP: cualquiera con la publishable key puede leer/escribir.
+-- Sustituye estas políticas por unas reales antes de producción.
+alter table familias enable row level security;
+alter table miembros enable row level security;
+alter table favoritos enable row level security;
+alter table menus enable row level security;
+
+drop policy if exists "nidu_open" on familias;
+drop policy if exists "nidu_open" on miembros;
+drop policy if exists "nidu_open" on favoritos;
+drop policy if exists "nidu_open" on menus;
+
+create policy "nidu_open" on familias for all using (true) with check (true);
+create policy "nidu_open" on miembros for all using (true) with check (true);
+create policy "nidu_open" on favoritos for all using (true) with check (true);
+create policy "nidu_open" on menus for all using (true) with check (true);

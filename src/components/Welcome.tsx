@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Logo } from "@/components/Logo";
 import { createFamilia, getFamiliaByCodigo, type Familia } from "@/lib/db";
 
 type View = "home" | "create" | "created" | "join";
@@ -9,16 +10,11 @@ type Props = {
   onReady: (familiaId: string) => void;
 };
 
-function Logo() {
+function Brand() {
   return (
     <div className="flex flex-col items-center">
-      <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-green-600 text-3xl font-bold text-white shadow-sm">
-        N
-      </div>
-      <h1 className="mt-4 text-3xl font-bold tracking-tight text-gray-900">
-        Nidú
-      </h1>
-      <p className="mt-1 text-base text-gray-600">La cena de hoy, resuelta.</p>
+      <Logo className="h-24 w-auto" />
+      <p className="mt-3 text-lg text-gray-500">La cena de hoy, resuelta.</p>
     </div>
   );
 }
@@ -110,7 +106,7 @@ export function Welcome({ onReady }: Props) {
       <div className="w-full max-w-sm">
         {view === "home" && (
           <>
-            <Logo />
+            <Brand />
             <div className="mt-12 space-y-3">
               <button
                 type="button"

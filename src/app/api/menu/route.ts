@@ -107,9 +107,23 @@ const familyToPrompt = (members: Member[]): string => {
           ? m.cookingDays.map((d) => DAY_LABELS[d]).join(", ")
           : "ningún día"
         : "no cocina";
-    return `- ${m.name} (${role}); restricciones: ${restrictions}; cocina: ${cooks}`;
+    const dislikes =
+      m.dislikes && m.dislikes.trim() !== "" ? m.dislikes.trim() : "—";
+    return `- ${m.name} (${role}); restricciones: ${restrictions}; no le gusta: ${dislikes}; cocina: ${cooks}`;
   });
   return lines.join("\n");
+};
+
+// Sección obligatoria con los alimentos que cada miembro no quiere comer.
+const dislikesBlock = (members: Member[]): string => {
+  const withDislikes = members.filter(
+    (m) => m.dislikes && m.dislikes.trim() !== "",
+  );
+  if (withDislikes.length === 0) return "";
+  const lines = withDislikes.map(
+    (m) => `- ${m.name}: NO usar nunca → ${m.dislikes.trim()}`,
+  );
+  return `\nIMPORTANTE - Alimentos a evitar (no son alergias pero debes evitarlos completamente en el menú):\n${lines.join("\n")}\n\nEsto es obligatorio. Si un miembro no quiere brócoli, no puede aparecer brócoli en ningún plato de la semana, ni como ingrediente secundario ni como guarnición.\n`;
 };
 
 const NUTRITIONAL_RULES = `Reglas nutricionales (aplícalas estrictamente):
@@ -140,7 +154,7 @@ const buildWeekPrompt = (members: Member[], favoritos: string[]) => `Eres un pla
 
 Familia:
 ${familyToPrompt(members)}
-${favoritesBlock(favoritos)}
+${dislikesBlock(members)}${favoritesBlock(favoritos)}
 ${COMMON_RULES}
 7. "dia" debe ser exactamente uno de: Lunes, Martes, Miércoles, Jueves, Viernes, Sábado, Domingo, en ese orden.
 8. Devuelve el array "semana" con los 7 días en orden.
@@ -163,7 +177,7 @@ const buildDayPrompt = (
 
 Familia:
 ${familyToPrompt(members)}
-${existing}${favoritesBlock(favoritos)}
+${dislikesBlock(members)}${existing}${favoritesBlock(favoritos)}
 ${COMMON_RULES}
 7. "dia" debe ser exactamente "${dia}".
 8. Devuelve un array "semana" con UN único elemento.
@@ -249,6 +263,11 @@ export async function POST(req: Request) {
   } else {
     prompt = buildWeekPrompt(members, favoritos);
   }
+
+  // Log del prompt completo para poder verificarlo en la consola del servidor.
+  console.log(
+    `\n===== [/api/menu] PROMPT (modo: ${modo}) =====\n${prompt}\n===== FIN PROMPT =====\n`,
+  );
 
   const genAI = new GoogleGenerativeAI(apiKey);
   const model = genAI.getGenerativeModel({

@@ -80,7 +80,7 @@ export function FamilyTab({
   };
 
   return (
-    <main className="mx-auto w-full max-w-xl px-5 pt-10 pb-8 sm:pt-16">
+    <main className="mx-auto w-full max-w-xl px-5 pt-6 pb-8">
       <header className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl">
