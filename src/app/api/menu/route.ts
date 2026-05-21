@@ -1,0 +1,193 @@
+import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
+import type { Member } from "@/lib/family";
+import { DAY_LABELS } from "@/lib/family";
+
+export const runtime = "nodejs";
+
+// gemini-1.5-flash está retirado en v1beta. 2.5-flash es su equivalente actual
+// (mismo tier de coste/latencia). Cambia a "gemini-flash-latest" si prefieres
+// que rastree automáticamente la versión vigente.
+const MODEL = "gemini-2.5-flash";
+
+const dishSchema = {
+  type: SchemaType.OBJECT,
+  properties: {
+    nombre: { type: SchemaType.STRING },
+    tiempo: { type: SchemaType.INTEGER },
+    apto: { type: SchemaType.BOOLEAN },
+    adaptacion: { type: SchemaType.STRING },
+    cocinero: { type: SchemaType.STRING },
+    ingredientes: {
+      type: SchemaType.ARRAY,
+      items: {
+        type: SchemaType.OBJECT,
+        properties: {
+          nombre: { type: SchemaType.STRING },
+          cantidad: { type: SchemaType.NUMBER },
+          unidad: {
+            type: SchemaType.STRING,
+            enum: ["g", "kg", "ml", "l", "ud", "bote", "paquete", "manojo"],
+          },
+          categoria: {
+            type: SchemaType.STRING,
+            enum: ["carnes", "verduras", "lacteos", "despensa", "otros"],
+          },
+        },
+        required: ["nombre", "cantidad", "unidad", "categoria"],
+      },
+    },
+  },
+  required: [
+    "nombre",
+    "tiempo",
+    "apto",
+    "adaptacion",
+    "cocinero",
+    "ingredientes",
+  ],
+} as const;
+
+const responseSchema = {
+  type: SchemaType.OBJECT,
+  properties: {
+    semana: {
+      type: SchemaType.ARRAY,
+      items: {
+        type: SchemaType.OBJECT,
+        properties: {
+          dia: { type: SchemaType.STRING },
+          comida: dishSchema,
+          cena: dishSchema,
+        },
+        required: ["dia", "comida", "cena"],
+      },
+    },
+  },
+  required: ["semana"],
+} as const;
+
+const familyToPrompt = (members: Member[]): string => {
+  const lines = members.map((m) => {
+    const role = m.age === "adulto" ? "adulto" : "niño/a";
+    const restrictions =
+      m.restrictions.length > 0 ? m.restrictions.join(", ") : "ninguna";
+    const cooks =
+      m.age === "adulto"
+        ? m.cookingDays.length > 0
+          ? m.cookingDays.map((d) => DAY_LABELS[d]).join(", ")
+          : "ningún día"
+        : "no cocina";
+    return `- ${m.name} (${role}); restricciones: ${restrictions}; cocina: ${cooks}`;
+  });
+  return lines.join("\n");
+};
+
+const buildPrompt = (members: Member[]) => `Eres un planificador de comidas familiar. Diseña un menú semanal con COMIDA y CENA para cada día (Lunes a Domingo). 14 platos en total.
+
+Familia:
+${familyToPrompt(members)}
+
+Reglas estrictas:
+1. Respeta TODAS las restricciones alimentarias de cada miembro.
+2. Para cada plato, "apto": true si todos pueden comerlo tal cual; false si algún miembro necesita adaptación.
+3. Si "apto" es false, "adaptacion" describe brevemente la variante (ej. "Versión sin gluten para Lucía"). Si es true, "adaptacion" debe ser una cadena vacía "".
+4. "cocinero" son las iniciales en mayúsculas (2 letras) del adulto que cocina ese día. Asigna prioritariamente un adulto que tenga ese día en su disponibilidad; si nadie está disponible ese día, elige cualquier adulto.
+5. No repitas la misma proteína (pollo, ternera, pescado, legumbres, huevo…) dos días seguidos en la misma franja.
+6. Las comidas tienden a ser más completas (25–50 min); las cenas más ligeras (15–30 min).
+7. Para cada plato incluye una lista de ingredientes con cantidad numérica, unidad (g, kg, ml, l, ud, bote, paquete, manojo) y categoría (carnes, verduras, lacteos, despensa, otros).
+8. "dia" debe ser exactamente uno de: Lunes, Martes, Miércoles, Jueves, Viernes, Sábado, Domingo, en ese orden.
+9. "tiempo" en minutos, entero.
+10. Devuelve el array "semana" con los 7 días en orden.
+
+Responde SOLO con JSON válido conforme al esquema indicado.`;
+
+const isValidMember = (m: unknown): m is Member => {
+  if (!m || typeof m !== "object") return false;
+  const v = m as Record<string, unknown>;
+  return (
+    typeof v.name === "string" &&
+    (v.age === "adulto" || v.age === "niño") &&
+    Array.isArray(v.restrictions) &&
+    Array.isArray(v.cookingDays)
+  );
+};
+
+export async function POST(req: Request) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    return Response.json(
+      { error: "GEMINI_API_KEY no está configurada en el servidor" },
+      { status: 500 },
+    );
+  }
+
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    return Response.json({ error: "JSON inválido" }, { status: 400 });
+  }
+
+  const members = (body as { members?: unknown })?.members;
+  if (!Array.isArray(members) || members.length === 0) {
+    return Response.json(
+      { error: "Se requiere al menos un miembro de la familia" },
+      { status: 400 },
+    );
+  }
+  if (!members.every(isValidMember)) {
+    return Response.json(
+      { error: "Formato de miembros inválido" },
+      { status: 400 },
+    );
+  }
+
+  const genAI = new GoogleGenerativeAI(apiKey);
+  const model = genAI.getGenerativeModel({
+    model: MODEL,
+    generationConfig: {
+      responseMimeType: "application/json",
+      responseSchema: responseSchema as never,
+      temperature: 1.0,
+    },
+  });
+
+  try {
+    const result = await model.generateContent(buildPrompt(members));
+    const text = result.response.text();
+    const parsed = JSON.parse(text) as unknown;
+
+    if (
+      !parsed ||
+      typeof parsed !== "object" ||
+      !Array.isArray((parsed as { semana?: unknown }).semana)
+    ) {
+      throw new Error("Respuesta sin campo 'semana'");
+    }
+
+    // Normaliza "adaptacion": "" → null (más cómodo en cliente)
+    const data = parsed as {
+      semana: Array<{
+        comida: { adaptacion: string };
+        cena: { adaptacion: string };
+      }>;
+    };
+    for (const day of data.semana) {
+      for (const meal of [day.comida, day.cena]) {
+        if (typeof meal.adaptacion === "string" && meal.adaptacion.trim() === "") {
+          (meal as unknown as { adaptacion: string | null }).adaptacion = null;
+        }
+      }
+    }
+
+    return Response.json(data);
+  } catch (err) {
+    const message =
+      err instanceof Error ? err.message : "Error desconocido al llamar a Gemini";
+    console.error("[/api/menu] Gemini error:", err);
+    return Response.json(
+      { error: `Gemini no devolvió un menú válido: ${message}` },
+      { status: 502 },
+    );
+  }
+}

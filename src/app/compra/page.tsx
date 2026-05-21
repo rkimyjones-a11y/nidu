@@ -1,12 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { SAMPLE_FAMILY } from "@/lib/family";
 import {
-  SAMPLE_DISHES,
+  fetchMenu,
   getWeekRange,
-  pickWeeklyDishes,
-} from "@/lib/menu";
+  readCachedMenu,
+  writeCachedMenu,
+  type GeneratedIngredient,
+  type MenuResponse,
+} from "@/lib/menuApi";
 import {
   CATEGORY_LABELS,
   CATEGORY_ORDER,
@@ -18,7 +22,24 @@ import {
   type Ingredient,
 } from "@/lib/shopping";
 
+const toIngredients = (raw: GeneratedIngredient[]): Ingredient[] =>
+  raw.map((r) => ({
+    name: r.nombre,
+    amount: r.cantidad,
+    unit: r.unidad,
+    category: r.categoria,
+  }));
+
+const dishesFromMenu = (menu: MenuResponse): { ingredients: Ingredient[] }[] =>
+  menu.semana.flatMap((d) => [
+    { ingredients: toIngredients(d.comida.ingredientes) },
+    { ingredients: toIngredients(d.cena.ingredientes) },
+  ]);
+
 export default function CompraPage() {
+  const [menu, setMenu] = useState<MenuResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [shareFeedback, setShareFeedback] = useState<string | null>(null);
 
@@ -28,10 +49,38 @@ export default function CompraPage() {
     [week],
   );
 
+  const generate = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await fetchMenu(SAMPLE_FAMILY);
+      setMenu(data);
+      writeCachedMenu(data);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "No hemos podido generar la lista. Vuelve a intentarlo.",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const cached = readCachedMenu();
+    if (cached) {
+      setMenu(cached);
+      setLoading(false);
+      return;
+    }
+    void generate();
+  }, [generate]);
+
   const grouped = useMemo(() => {
-    const dishes = pickWeeklyDishes(SAMPLE_DISHES, 0);
-    const all = aggregateIngredients(dishes);
     const map = new Map<Category, Ingredient[]>();
+    if (!menu) return map;
+    const all = aggregateIngredients(dishesFromMenu(menu));
     for (const ing of all) {
       const list = map.get(ing.category) ?? [];
       list.push(ing);
@@ -41,7 +90,7 @@ export default function CompraPage() {
       list.sort((a, b) => a.name.localeCompare(b.name, "es"));
     }
     return map;
-  }, []);
+  }, [menu]);
 
   const total = useMemo(
     () => Array.from(grouped.values()).reduce((acc, l) => acc + l.length, 0),
@@ -58,6 +107,7 @@ export default function CompraPage() {
   };
 
   const handleShare = async () => {
+    if (!menu) return;
     const lines: string[] = [`La compra · ${weekSentence}`, ""];
     for (const category of CATEGORY_ORDER) {
       const list = grouped.get(category);
@@ -80,7 +130,7 @@ export default function CompraPage() {
       setShareFeedback("Copiada al portapapeles");
       setTimeout(() => setShareFeedback(null), 2200);
     } catch {
-      // user cancelled share or clipboard blocked — silent
+      // user cancelled or clipboard blocked — silent
     }
   };
 
@@ -101,8 +151,9 @@ export default function CompraPage() {
           <button
             type="button"
             onClick={handleShare}
+            disabled={!menu}
             aria-label="Compartir lista"
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-700 shadow-sm transition-colors hover:border-green-600 hover:text-green-700"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-700 shadow-sm transition-colors hover:border-green-600 hover:text-green-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <svg
               aria-hidden
@@ -132,94 +183,124 @@ export default function CompraPage() {
           </div>
         )}
 
-        <section className="mt-8 space-y-6">
-          {CATEGORY_ORDER.map((category) => {
-            const items = grouped.get(category);
-            if (!items || items.length === 0) return null;
-            return (
-              <div key={category}>
-                <h2 className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                  {CATEGORY_LABELS[category]}
-                </h2>
-                <ul className="mt-2 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
-                  {items.map((ing, idx) => {
-                    const key = ingredientKey(ing);
-                    const isChecked = checked.has(key);
-                    return (
-                      <li
-                        key={key}
-                        className={
-                          (idx > 0 ? "border-t border-gray-100 " : "") +
-                          "flex items-center gap-3 px-4 py-3"
-                        }
-                      >
-                        <button
-                          type="button"
-                          role="checkbox"
-                          aria-checked={isChecked}
-                          aria-label={`Marcar ${ing.name}`}
-                          onClick={() => toggle(key)}
+        {loading && !menu && (
+          <div className="mt-10 rounded-2xl border border-gray-100 bg-gray-50/60 px-5 py-12 text-center">
+            <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-green-200 border-t-green-600" />
+            <p className="mt-4 text-base font-medium text-gray-700">
+              Calculando tu lista…
+            </p>
+          </div>
+        )}
+
+        {error && !menu && (
+          <div
+            role="alert"
+            className="mt-6 rounded-2xl border border-red-100 bg-red-50 px-4 py-4 text-sm text-red-700"
+          >
+            <p className="font-semibold">No hemos podido cargar la lista.</p>
+            <p className="mt-1 text-red-600">{error}</p>
+            <button
+              type="button"
+              onClick={() => void generate()}
+              className="mt-3 inline-flex rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700"
+            >
+              Reintentar
+            </button>
+          </div>
+        )}
+
+        {menu && (
+          <section className="mt-8 space-y-6">
+            {CATEGORY_ORDER.map((category) => {
+              const items = grouped.get(category);
+              if (!items || items.length === 0) return null;
+              return (
+                <div key={category}>
+                  <h2 className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                    {CATEGORY_LABELS[category]}
+                  </h2>
+                  <ul className="mt-2 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+                    {items.map((ing, idx) => {
+                      const key = ingredientKey(ing);
+                      const isChecked = checked.has(key);
+                      return (
+                        <li
+                          key={key}
                           className={
-                            "flex h-6 w-6 shrink-0 items-center justify-center rounded-md border transition-colors " +
-                            (isChecked
-                              ? "border-green-600 bg-green-600 text-white"
-                              : "border-gray-300 bg-white hover:border-green-600")
+                            (idx > 0 ? "border-t border-gray-100 " : "") +
+                            "flex items-center gap-3 px-4 py-3"
                           }
                         >
-                          {isChecked && (
-                            <svg
-                              aria-hidden
-                              viewBox="0 0 20 20"
-                              className="h-4 w-4"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="3"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
+                          <button
+                            type="button"
+                            role="checkbox"
+                            aria-checked={isChecked}
+                            aria-label={`Marcar ${ing.name}`}
+                            onClick={() => toggle(key)}
+                            className={
+                              "flex h-6 w-6 shrink-0 items-center justify-center rounded-md border transition-colors " +
+                              (isChecked
+                                ? "border-green-600 bg-green-600 text-white"
+                                : "border-gray-300 bg-white hover:border-green-600")
+                            }
+                          >
+                            {isChecked && (
+                              <svg
+                                aria-hidden
+                                viewBox="0 0 20 20"
+                                className="h-4 w-4"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="3"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              >
+                                <polyline points="4 10.5 8.5 15 16 6" />
+                              </svg>
+                            )}
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => toggle(key)}
+                            className="flex flex-1 items-center justify-between gap-3 text-left"
+                          >
+                            <span
+                              className={
+                                "text-sm transition-colors " +
+                                (isChecked
+                                  ? "text-gray-400 line-through"
+                                  : "text-gray-900")
+                              }
                             >
-                              <polyline points="4 10.5 8.5 15 16 6" />
-                            </svg>
-                          )}
-                        </button>
+                              {ing.name}
+                            </span>
+                            <span
+                              className={
+                                "shrink-0 text-sm font-medium transition-colors " +
+                                (isChecked
+                                  ? "text-gray-400 line-through"
+                                  : "text-gray-500")
+                              }
+                            >
+                              {formatQuantity(ing)}
+                            </span>
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              );
+            })}
+          </section>
+        )}
 
-                        <button
-                          type="button"
-                          onClick={() => toggle(key)}
-                          className="flex flex-1 items-center justify-between gap-3 text-left"
-                        >
-                          <span
-                            className={
-                              "text-sm transition-colors " +
-                              (isChecked
-                                ? "text-gray-400 line-through"
-                                : "text-gray-900")
-                            }
-                          >
-                            {ing.name}
-                          </span>
-                          <span
-                            className={
-                              "shrink-0 text-sm font-medium transition-colors " +
-                              (isChecked
-                                ? "text-gray-400 line-through"
-                                : "text-gray-500")
-                            }
-                          >
-                            {formatQuantity(ing)}
-                          </span>
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </div>
-            );
-          })}
-        </section>
-
-        <p className="mt-10 text-center text-xs text-gray-400">
-          Lista generada por Nidú · nidu.app
-        </p>
+        {menu && (
+          <p className="mt-10 text-center text-xs text-gray-400">
+            Lista generada por Nidú · nidu.app
+          </p>
+        )}
       </main>
 
       <div className="fixed inset-x-0 bottom-0 border-t border-gray-100 bg-white/90 px-5 py-4 backdrop-blur">
