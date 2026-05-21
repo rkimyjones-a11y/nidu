@@ -19,6 +19,16 @@ export type GeneratedIngredient = {
   categoria: Category;
 };
 
+export type ProteinaLevel = "alta" | "media" | "baja";
+export type MacroLevel = "alto" | "medio" | "bajo";
+
+export type Nutrientes = {
+  proteina: ProteinaLevel;
+  carbohidratos: MacroLevel;
+  grasas: ProteinaLevel;
+  calorias_aprox: number;
+};
+
 export type GeneratedDish = {
   nombre: string;
   tiempo: number;
@@ -26,6 +36,8 @@ export type GeneratedDish = {
   adaptacion: string | null;
   cocinero: string;
   ingredientes: GeneratedIngredient[];
+  // Optional para compatibilidad con menús generados antes de añadir el campo.
+  nutrientes?: Nutrientes;
 };
 
 export type GeneratedDay = {
@@ -59,11 +71,18 @@ export const writeCachedMenu = (menu: MenuResponse): void => {
   }
 };
 
-export const fetchMenu = async (members: Member[]): Promise<MenuResponse> => {
+export type GenerateMenuOptions =
+  | { modo?: "semana" }
+  | { modo: "dia"; dia: SpanishDay; platosExistentes?: string[] };
+
+export const fetchMenu = async (
+  members: Member[],
+  options: GenerateMenuOptions = {},
+): Promise<MenuResponse> => {
   const res = await fetch("/api/menu", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ members }),
+    body: JSON.stringify({ members, ...options }),
   });
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as { error?: string };

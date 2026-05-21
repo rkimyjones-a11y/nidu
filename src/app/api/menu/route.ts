@@ -1,6 +1,7 @@
 import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
 import type { Member } from "@/lib/family";
 import { DAY_LABELS } from "@/lib/family";
+import { SPANISH_DAYS, type SpanishDay } from "@/lib/menuApi";
 
 export const runtime = "nodejs";
 
@@ -8,6 +9,26 @@ export const runtime = "nodejs";
 // (mismo tier de coste/latencia). Cambia a "gemini-flash-latest" si prefieres
 // que rastree automáticamente la versión vigente.
 const MODEL = "gemini-2.5-flash";
+
+const nutrientesSchema = {
+  type: SchemaType.OBJECT,
+  properties: {
+    proteina: {
+      type: SchemaType.STRING,
+      enum: ["alta", "media", "baja"],
+    },
+    carbohidratos: {
+      type: SchemaType.STRING,
+      enum: ["alto", "medio", "bajo"],
+    },
+    grasas: {
+      type: SchemaType.STRING,
+      enum: ["alta", "media", "baja"],
+    },
+    calorias_aprox: { type: SchemaType.INTEGER },
+  },
+  required: ["proteina", "carbohidratos", "grasas", "calorias_aprox"],
+} as const;
 
 const dishSchema = {
   type: SchemaType.OBJECT,
@@ -36,6 +57,7 @@ const dishSchema = {
         required: ["nombre", "cantidad", "unidad", "categoria"],
       },
     },
+    nutrientes: nutrientesSchema,
   },
   required: [
     "nombre",
@@ -44,6 +66,7 @@ const dishSchema = {
     "adaptacion",
     "cocinero",
     "ingredientes",
+    "nutrientes",
   ],
 } as const;
 
@@ -82,24 +105,60 @@ const familyToPrompt = (members: Member[]): string => {
   return lines.join("\n");
 };
 
-const buildPrompt = (members: Member[]) => `Eres un planificador de comidas familiar. Diseña un menú semanal con COMIDA y CENA para cada día (Lunes a Domingo). 14 platos en total.
+const NUTRITIONAL_RULES = `Reglas nutricionales (aplícalas estrictamente):
+- Alterna proteína animal y vegetal a lo largo de la semana.
+- Máximo 2 días seguidos con la misma proteína principal.
+- Mínimo 3 cenas ligeras por semana (sopas, ensaladas, cremas, tortillas).
+- Mínimo 2 comidas con legumbres por semana.
+- Mínimo 3 comidas con verdura como base.
+- Mínimo 1 comida con pescado por semana (omítela solo si hay restricción de pescado o marisco).
+- Como mucho 2 platos fritos a la semana.
+- Las cenas deben ser más ligeras que las comidas (menos calorías y menos grasa).
+- En "nutrientes", "calorias_aprox" debe ser un entero con la estimación realista por ración.`;
+
+const COMMON_RULES = `Reglas estrictas:
+1. Respeta TODAS las restricciones alimentarias de cada miembro.
+2. Para cada plato, "apto": true si todos pueden comerlo tal cual; false si algún miembro necesita adaptación.
+3. Si "apto" es false, "adaptacion" describe brevemente la variante (ej. "Versión sin gluten para Lucía"). Si es true, "adaptacion" debe ser cadena vacía "".
+4. "cocinero" son las iniciales en mayúsculas (2 letras) del adulto que cocina ese día, priorizando los adultos disponibles ese día. Si nadie está disponible, elige cualquier adulto.
+5. Para cada plato incluye una lista de ingredientes con cantidad numérica, unidad (g, kg, ml, l, ud, bote, paquete, manojo) y categoría (carnes, verduras, lacteos, despensa, otros).
+6. "tiempo" en minutos, entero. Comidas: 25–50 min. Cenas: 15–30 min.`;
+
+const buildWeekPrompt = (members: Member[]) => `Eres un planificador de comidas familiar. Diseña un menú semanal con COMIDA y CENA para cada día (Lunes a Domingo). 14 platos en total.
 
 Familia:
 ${familyToPrompt(members)}
 
-Reglas estrictas:
-1. Respeta TODAS las restricciones alimentarias de cada miembro.
-2. Para cada plato, "apto": true si todos pueden comerlo tal cual; false si algún miembro necesita adaptación.
-3. Si "apto" es false, "adaptacion" describe brevemente la variante (ej. "Versión sin gluten para Lucía"). Si es true, "adaptacion" debe ser una cadena vacía "".
-4. "cocinero" son las iniciales en mayúsculas (2 letras) del adulto que cocina ese día. Asigna prioritariamente un adulto que tenga ese día en su disponibilidad; si nadie está disponible ese día, elige cualquier adulto.
-5. No repitas la misma proteína (pollo, ternera, pescado, legumbres, huevo…) dos días seguidos en la misma franja.
-6. Las comidas tienden a ser más completas (25–50 min); las cenas más ligeras (15–30 min).
-7. Para cada plato incluye una lista de ingredientes con cantidad numérica, unidad (g, kg, ml, l, ud, bote, paquete, manojo) y categoría (carnes, verduras, lacteos, despensa, otros).
-8. "dia" debe ser exactamente uno de: Lunes, Martes, Miércoles, Jueves, Viernes, Sábado, Domingo, en ese orden.
-9. "tiempo" en minutos, entero.
-10. Devuelve el array "semana" con los 7 días en orden.
+${COMMON_RULES}
+7. "dia" debe ser exactamente uno de: Lunes, Martes, Miércoles, Jueves, Viernes, Sábado, Domingo, en ese orden.
+8. Devuelve el array "semana" con los 7 días en orden.
+
+${NUTRITIONAL_RULES}
 
 Responde SOLO con JSON válido conforme al esquema indicado.`;
+
+const buildDayPrompt = (
+  members: Member[],
+  dia: SpanishDay,
+  platosExistentes: string[],
+) => {
+  const existing =
+    platosExistentes.length > 0
+      ? `\nPlatos ya presentes en el resto de la semana (NO los repitas y busca opciones claramente distintas en proteína y técnica):\n${platosExistentes.map((p) => `- ${p}`).join("\n")}\n`
+      : "";
+  return `Eres un planificador de comidas familiar. Diseña UNA comida y UNA cena para el día ${dia}. Devuelve la estructura "semana" con un único elemento cuyo "dia" sea exactamente "${dia}".
+
+Familia:
+${familyToPrompt(members)}
+${existing}
+${COMMON_RULES}
+7. "dia" debe ser exactamente "${dia}".
+8. Devuelve un array "semana" con UN único elemento.
+
+${NUTRITIONAL_RULES}
+
+Responde SOLO con JSON válido conforme al esquema indicado.`;
+};
 
 const isValidMember = (m: unknown): m is Member => {
   if (!m || typeof m !== "object") return false;
@@ -112,6 +171,9 @@ const isValidMember = (m: unknown): m is Member => {
   );
 };
 
+const isSpanishDay = (v: unknown): v is SpanishDay =>
+  typeof v === "string" && (SPANISH_DAYS as readonly string[]).includes(v);
+
 export async function POST(req: Request) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
@@ -121,14 +183,14 @@ export async function POST(req: Request) {
     );
   }
 
-  let body: unknown;
+  let body: Record<string, unknown>;
   try {
-    body = await req.json();
+    body = (await req.json()) as Record<string, unknown>;
   } catch {
     return Response.json({ error: "JSON inválido" }, { status: 400 });
   }
 
-  const members = (body as { members?: unknown })?.members;
+  const members = body.members;
   if (!Array.isArray(members) || members.length === 0) {
     return Response.json(
       { error: "Se requiere al menos un miembro de la familia" },
@@ -142,6 +204,27 @@ export async function POST(req: Request) {
     );
   }
 
+  const modo = body.modo === "dia" ? "dia" : "semana";
+
+  let prompt: string;
+  if (modo === "dia") {
+    const dia = body.dia;
+    if (!isSpanishDay(dia)) {
+      return Response.json(
+        { error: "Falta o es inválido el campo 'dia'" },
+        { status: 400 },
+      );
+    }
+    const platosExistentes = Array.isArray(body.platosExistentes)
+      ? (body.platosExistentes as unknown[]).filter(
+          (s): s is string => typeof s === "string",
+        )
+      : [];
+    prompt = buildDayPrompt(members, dia, platosExistentes);
+  } else {
+    prompt = buildWeekPrompt(members);
+  }
+
   const genAI = new GoogleGenerativeAI(apiKey);
   const model = genAI.getGenerativeModel({
     model: MODEL,
@@ -153,7 +236,7 @@ export async function POST(req: Request) {
   });
 
   try {
-    const result = await model.generateContent(buildPrompt(members));
+    const result = await model.generateContent(prompt);
     const text = result.response.text();
     const parsed = JSON.parse(text) as unknown;
 
@@ -165,16 +248,28 @@ export async function POST(req: Request) {
       throw new Error("Respuesta sin campo 'semana'");
     }
 
-    // Normaliza "adaptacion": "" → null (más cómodo en cliente)
     const data = parsed as {
       semana: Array<{
+        dia: string;
         comida: { adaptacion: string };
         cena: { adaptacion: string };
       }>;
     };
+
+    // En modo "dia" forzamos el nombre del día por si el modelo varía la
+    // capitalización o acentos, y nos quedamos con un único elemento.
+    if (modo === "dia" && data.semana.length > 0) {
+      data.semana[0]!.dia = body.dia as string;
+      data.semana = [data.semana[0]!];
+    }
+
+    // Normaliza "adaptacion": "" → null (más cómodo en cliente)
     for (const day of data.semana) {
       for (const meal of [day.comida, day.cena]) {
-        if (typeof meal.adaptacion === "string" && meal.adaptacion.trim() === "") {
+        if (
+          typeof meal.adaptacion === "string" &&
+          meal.adaptacion.trim() === ""
+        ) {
           (meal as unknown as { adaptacion: string | null }).adaptacion = null;
         }
       }

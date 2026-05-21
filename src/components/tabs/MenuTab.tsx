@@ -8,6 +8,7 @@ import {
   fetchMenu,
   getWeekRange,
   type MenuResponse,
+  type SpanishDay,
 } from "@/lib/menuApi";
 
 type Props = {
@@ -25,6 +26,7 @@ export function MenuTab({
 }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [regenerating, setRegenerating] = useState<Set<SpanishDay>>(new Set());
 
   const week = useMemo(() => getWeekRange(new Date()), []);
 
@@ -45,6 +47,49 @@ export function MenuTab({
       setLoading(false);
     }
   }, [members, onMenuChange]);
+
+  const regenerateDay = useCallback(
+    async (dia: SpanishDay) => {
+      if (!menu || members.length === 0) return;
+      setRegenerating((prev) => {
+        const next = new Set(prev);
+        next.add(dia);
+        return next;
+      });
+      setError(null);
+      try {
+        const platosExistentes = menu.semana
+          .filter((d) => d.dia !== dia)
+          .flatMap((d) => [d.comida.nombre, d.cena.nombre]);
+
+        const data = await fetchMenu(members, {
+          modo: "dia",
+          dia,
+          platosExistentes,
+        });
+        const fresh = data.semana[0];
+        if (!fresh) throw new Error("Respuesta vacía de Gemini");
+
+        onMenuChange({
+          ...menu,
+          semana: menu.semana.map((d) => (d.dia === dia ? fresh : d)),
+        });
+      } catch (err) {
+        setError(
+          err instanceof Error
+            ? err.message
+            : `No hemos podido regenerar ${dia}.`,
+        );
+      } finally {
+        setRegenerating((prev) => {
+          const next = new Set(prev);
+          next.delete(dia);
+          return next;
+        });
+      }
+    },
+    [members, menu, onMenuChange],
+  );
 
   // Auto-generar al entrar a la pestaña si hay familia pero no menú aún.
   useEffect(() => {
@@ -151,6 +196,8 @@ export function MenuTab({
               day={d.dia}
               comida={d.comida}
               cena={d.cena}
+              regenerating={regenerating.has(d.dia)}
+              onRegenerate={() => void regenerateDay(d.dia)}
             />
           ))}
         </section>

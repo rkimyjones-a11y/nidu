@@ -1,9 +1,11 @@
-import type { GeneratedDish, SpanishDay } from "@/lib/menuApi";
+import type { GeneratedDish, ProteinaLevel, SpanishDay } from "@/lib/menuApi";
 
 type Props = {
   day: SpanishDay;
   comida: GeneratedDish;
   cena: GeneratedDish;
+  regenerating?: boolean;
+  onRegenerate?: () => void;
 };
 
 const SHORT: Record<SpanishDay, string> = {
@@ -29,6 +31,49 @@ function ClockIcon() {
       <circle cx="10" cy="10" r="7.5" />
       <path d="M10 6v4l2.5 2" strokeLinecap="round" />
     </svg>
+  );
+}
+
+function RefreshIcon({ spinning }: { spinning?: boolean }) {
+  return (
+    <svg
+      aria-hidden
+      viewBox="0 0 24 24"
+      className={"h-4 w-4 " + (spinning ? "animate-spin" : "")}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M3 12a9 9 0 0 1 15.5-6.36L21 8" />
+      <path d="M21 3v5h-5" />
+      <path d="M21 12a9 9 0 0 1-15.5 6.36L3 16" />
+      <path d="M3 21v-5h5" />
+    </svg>
+  );
+}
+
+const PROTEIN_STYLES: Record<
+  ProteinaLevel,
+  { bg: string; label: string }
+> = {
+  alta: { bg: "bg-green-500", label: "Proteína alta" },
+  media: { bg: "bg-orange-500", label: "Proteína media" },
+  baja: { bg: "bg-gray-400", label: "Proteína baja" },
+};
+
+function ProteinDot({ level }: { level: ProteinaLevel }) {
+  const style = PROTEIN_STYLES[level];
+  return (
+    <span
+      role="img"
+      aria-label={style.label}
+      title={style.label}
+      className={
+        "inline-block h-2 w-2 shrink-0 rounded-full " + style.bg
+      }
+    />
   );
 }
 
@@ -61,6 +106,13 @@ function MealRow({ label, dish }: { label: string; dish: GeneratedDish }) {
           {dish.tiempo} min
         </span>
 
+        {dish.nutrientes && (
+          <span className="inline-flex items-center gap-1.5 text-xs text-gray-500">
+            <ProteinDot level={dish.nutrientes.proteina} />
+            {dish.nutrientes.calorias_aprox} kcal
+          </span>
+        )}
+
         {dish.apto ? (
           <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2 py-0.5 text-xs font-medium text-green-700">
             <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-green-600" />
@@ -77,7 +129,13 @@ function MealRow({ label, dish }: { label: string; dish: GeneratedDish }) {
   );
 }
 
-export function MenuDayCard({ day, comida, cena }: Props) {
+export function MenuDayCard({
+  day,
+  comida,
+  cena,
+  regenerating = false,
+  onRegenerate,
+}: Props) {
   return (
     <article className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
       <div className="flex items-center gap-3">
@@ -87,14 +145,32 @@ export function MenuDayCard({ day, comida, cena }: Props) {
         >
           {SHORT[day]}
         </div>
-        <h3 className="text-sm font-semibold text-gray-700">{day}</h3>
+        <h3 className="flex-1 text-sm font-semibold text-gray-700">{day}</h3>
+        {onRegenerate && (
+          <button
+            type="button"
+            onClick={onRegenerate}
+            disabled={regenerating}
+            aria-label={`Regenerar ${day}`}
+            className="flex h-7 w-7 items-center justify-center rounded-md text-gray-400 transition-colors hover:bg-gray-100 hover:text-green-600 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <RefreshIcon spinning={regenerating} />
+          </button>
+        )}
       </div>
 
-      <div className="mt-4 space-y-4">
-        <MealRow label="Comida" dish={comida} />
-        <div className="border-t border-gray-100" />
-        <MealRow label="Cena" dish={cena} />
-      </div>
+      {regenerating ? (
+        <div className="mt-4 flex flex-col items-center justify-center py-8">
+          <div className="h-6 w-6 animate-spin rounded-full border-2 border-green-200 border-t-green-600" />
+          <p className="mt-2 text-sm text-gray-500">Buscando platos…</p>
+        </div>
+      ) : (
+        <div className="mt-4 space-y-4">
+          <MealRow label="Comida" dish={comida} />
+          <div className="border-t border-gray-100" />
+          <MealRow label="Cena" dish={cena} />
+        </div>
+      )}
     </article>
   );
 }
