@@ -6,6 +6,8 @@ type Props = {
   cena: GeneratedDish;
   regenerating?: boolean;
   onRegenerate?: () => void;
+  isFavorite?: (nombre: string) => boolean;
+  onToggleFavorite?: (nombre: string) => void;
 };
 
 const SHORT: Record<SpanishDay, string> = {
@@ -77,7 +79,53 @@ function ProteinDot({ level }: { level: ProteinaLevel }) {
   );
 }
 
-function MealRow({ label, dish }: { label: string; dish: GeneratedDish }) {
+function HeartButton({
+  active,
+  onClick,
+}: {
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      aria-label={active ? "Quitar de favoritos" : "Añadir a favoritos"}
+      className={
+        "flex h-7 w-7 shrink-0 items-center justify-center rounded-full transition-colors " +
+        (active
+          ? "text-green-600 hover:bg-green-50"
+          : "text-gray-300 hover:bg-gray-100 hover:text-green-600")
+      }
+    >
+      <svg
+        aria-hidden
+        viewBox="0 0 24 24"
+        className="h-5 w-5"
+        fill={active ? "currentColor" : "none"}
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M19 14c1.5-1.5 3-3.3 3-5.5A4.5 4.5 0 0 0 12 5.5 4.5 4.5 0 0 0 2 8.5C2 10.7 3.5 12.5 5 14l7 7Z" />
+      </svg>
+    </button>
+  );
+}
+
+function MealRow({
+  label,
+  dish,
+  isFavorite,
+  onToggleFavorite,
+}: {
+  label: string;
+  dish: GeneratedDish;
+  isFavorite?: (nombre: string) => boolean;
+  onToggleFavorite?: (nombre: string) => void;
+}) {
   return (
     <div>
       <div className="flex items-start justify-between gap-3">
@@ -89,15 +137,23 @@ function MealRow({ label, dish }: { label: string; dish: GeneratedDish }) {
             {dish.nombre}
           </p>
         </div>
-        {dish.cocinero && (
-          <span
-            title={`Cocina ${dish.cocinero}`}
-            aria-label={`Cocina ${dish.cocinero}`}
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gray-100 text-[11px] font-semibold text-gray-700"
-          >
-            {dish.cocinero}
-          </span>
-        )}
+        <div className="flex shrink-0 items-center gap-1.5">
+          {onToggleFavorite && (
+            <HeartButton
+              active={isFavorite?.(dish.nombre) ?? false}
+              onClick={() => onToggleFavorite(dish.nombre)}
+            />
+          )}
+          {dish.cocinero && (
+            <span
+              title={`Cocina ${dish.cocinero}`}
+              aria-label={`Cocina ${dish.cocinero}`}
+              className="flex h-7 w-7 items-center justify-center rounded-full bg-gray-100 text-[11px] font-semibold text-gray-700"
+            >
+              {dish.cocinero}
+            </span>
+          )}
+        </div>
       </div>
 
       <div className="mt-1.5 flex flex-wrap items-center gap-2">
@@ -135,6 +191,8 @@ export function MenuDayCard({
   cena,
   regenerating = false,
   onRegenerate,
+  isFavorite,
+  onToggleFavorite,
 }: Props) {
   return (
     <article className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
@@ -166,9 +224,19 @@ export function MenuDayCard({
         </div>
       ) : (
         <div className="mt-4 space-y-4">
-          <MealRow label="Comida" dish={comida} />
+          <MealRow
+            label="Comida"
+            dish={comida}
+            isFavorite={isFavorite}
+            onToggleFavorite={onToggleFavorite}
+          />
           <div className="border-t border-gray-100" />
-          <MealRow label="Cena" dish={cena} />
+          <MealRow
+            label="Cena"
+            dish={cena}
+            isFavorite={isFavorite}
+            onToggleFavorite={onToggleFavorite}
+          />
         </div>
       )}
     </article>

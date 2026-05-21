@@ -1,7 +1,14 @@
 import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
 import type { Member } from "@/lib/family";
 import { DAY_LABELS } from "@/lib/family";
-import { SPANISH_DAYS, type SpanishDay } from "@/lib/menuApi";
+import { getFavoritos, saveMenu } from "@/lib/db";
+import {
+  SPANISH_DAYS,
+  getWeekRange,
+  toISODate,
+  type MenuResponse,
+  type SpanishDay,
+} from "@/lib/menuApi";
 
 export const runtime = "nodejs";
 
@@ -124,11 +131,16 @@ const COMMON_RULES = `Reglas estrictas:
 5. Para cada plato incluye una lista de ingredientes con cantidad numérica, unidad (g, kg, ml, l, ud, bote, paquete, manojo) y categoría (carnes, verduras, lacteos, despensa, otros).
 6. "tiempo" en minutos, entero. Comidas: 25–50 min. Cenas: 15–30 min.`;
 
-const buildWeekPrompt = (members: Member[]) => `Eres un planificador de comidas familiar. Diseña un menú semanal con COMIDA y CENA para cada día (Lunes a Domingo). 14 platos en total.
+const favoritesBlock = (favoritos: string[]): string =>
+  favoritos.length > 0
+    ? `\nEstos son los platos favoritos de la familia, intenta incluir al menos 2-3 de ellos en el menú semanal (adaptándolos a las restricciones si hace falta):\n${favoritos.map((f) => `- ${f}`).join("\n")}\n`
+    : "";
+
+const buildWeekPrompt = (members: Member[], favoritos: string[]) => `Eres un planificador de comidas familiar. Diseña un menú semanal con COMIDA y CENA para cada día (Lunes a Domingo). 14 platos en total.
 
 Familia:
 ${familyToPrompt(members)}
-
+${favoritesBlock(favoritos)}
 ${COMMON_RULES}
 7. "dia" debe ser exactamente uno de: Lunes, Martes, Miércoles, Jueves, Viernes, Sábado, Domingo, en ese orden.
 8. Devuelve el array "semana" con los 7 días en orden.
@@ -141,6 +153,7 @@ const buildDayPrompt = (
   members: Member[],
   dia: SpanishDay,
   platosExistentes: string[],
+  favoritos: string[],
 ) => {
   const existing =
     platosExistentes.length > 0
@@ -150,7 +163,7 @@ const buildDayPrompt = (
 
 Familia:
 ${familyToPrompt(members)}
-${existing}
+${existing}${favoritesBlock(favoritos)}
 ${COMMON_RULES}
 7. "dia" debe ser exactamente "${dia}".
 8. Devuelve un array "semana" con UN único elemento.
@@ -205,6 +218,18 @@ export async function POST(req: Request) {
   }
 
   const modo = body.modo === "dia" ? "dia" : "semana";
+  const familiaId =
+    typeof body.familia_id === "string" ? body.familia_id : null;
+
+  // Cargar favoritos de la familia (best-effort) para sesgar el menú.
+  let favoritos: string[] = [];
+  if (familiaId) {
+    try {
+      favoritos = (await getFavoritos(familiaId)).map((f) => f.nombre);
+    } catch (err) {
+      console.error("[/api/menu] No se pudieron cargar favoritos:", err);
+    }
+  }
 
   let prompt: string;
   if (modo === "dia") {
@@ -220,9 +245,9 @@ export async function POST(req: Request) {
           (s): s is string => typeof s === "string",
         )
       : [];
-    prompt = buildDayPrompt(members, dia, platosExistentes);
+    prompt = buildDayPrompt(members, dia, platosExistentes, favoritos);
   } else {
-    prompt = buildWeekPrompt(members);
+    prompt = buildWeekPrompt(members, favoritos);
   }
 
   const genAI = new GoogleGenerativeAI(apiKey);
@@ -272,6 +297,16 @@ export async function POST(req: Request) {
         ) {
           (meal as unknown as { adaptacion: string | null }).adaptacion = null;
         }
+      }
+    }
+
+    // Persistir el menú semanal completo (best-effort, no bloquea la respuesta).
+    if (modo === "semana" && familiaId) {
+      const semanaInicio = toISODate(getWeekRange(new Date()).monday);
+      try {
+        await saveMenu(familiaId, semanaInicio, data as unknown as MenuResponse);
+      } catch (err) {
+        console.error("[/api/menu] No se pudo guardar el menú:", err);
       }
     }
 

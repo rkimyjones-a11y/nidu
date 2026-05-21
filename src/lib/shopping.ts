@@ -38,6 +38,14 @@ export const CATEGORY_ORDER: Category[] = [
   "otros",
 ];
 
+export const CATEGORY_EMOJI: Record<Category, string> = {
+  carnes: "🥩",
+  verduras: "🥬",
+  lacteos: "🥛",
+  despensa: "🍝",
+  otros: "🧂",
+};
+
 export const ingredientKey = (ing: Pick<Ingredient, "name" | "unit">) =>
   `${ing.name.toLowerCase()}__${ing.unit}`;
 

@@ -8,6 +8,7 @@ import {
   type MenuResponse,
 } from "@/lib/menuApi";
 import {
+  CATEGORY_EMOJI,
   CATEGORY_LABELS,
   CATEGORY_ORDER,
   aggregateIngredients,
@@ -86,17 +87,21 @@ export function CompraTab({
 
   const handleShare = async () => {
     if (!menu) return;
-    const lines: string[] = [`La compra · ${weekSentence}`, ""];
+    const lines: string[] = [
+      "🛒 Lista de la compra — Nidú",
+      weekSentence,
+      "",
+    ];
     for (const category of CATEGORY_ORDER) {
       const list = grouped.get(category);
       if (!list || list.length === 0) continue;
-      lines.push(CATEGORY_LABELS[category]);
+      lines.push(`${CATEGORY_EMOJI[category]} ${CATEGORY_LABELS[category]}`);
       for (const ing of list) {
-        lines.push(`  • ${ing.name} — ${formatQuantity(ing)}`);
+        lines.push(`• ${ing.name} ${formatQuantity(ing)}`);
       }
       lines.push("");
     }
-    lines.push("Lista generada por Nidú · nidu.app");
+    lines.push("Generado con nidu.app");
     const text = lines.join("\n");
 
     try {
@@ -105,7 +110,7 @@ export function CompraTab({
         return;
       }
       await navigator.clipboard.writeText(text);
-      setShareFeedback("Copiada al portapapeles");
+      setShareFeedback("¡Copiado!");
       setTimeout(() => setShareFeedback(null), 2200);
     } catch {
       // user cancelled or clipboard blocked — silent

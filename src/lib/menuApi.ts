@@ -50,45 +50,34 @@ export type MenuResponse = {
   semana: GeneratedDay[];
 };
 
-export const CACHE_KEY = "nidu:menu:v1";
-
-export const readCachedMenu = (): MenuResponse | null => {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = window.localStorage.getItem(CACHE_KEY);
-    return raw ? (JSON.parse(raw) as MenuResponse) : null;
-  } catch {
-    return null;
-  }
-};
-
-export const writeCachedMenu = (menu: MenuResponse): void => {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(CACHE_KEY, JSON.stringify(menu));
-  } catch {
-    // quota exceeded or storage disabled — non-fatal
-  }
-};
-
-export type GenerateMenuOptions =
+export type GenerateMenuOptions = (
   | { modo?: "semana" }
-  | { modo: "dia"; dia: SpanishDay; platosExistentes?: string[] };
+  | { modo: "dia"; dia: SpanishDay; platosExistentes?: string[] }
+) & { familiaId?: string };
 
 export const fetchMenu = async (
   members: Member[],
   options: GenerateMenuOptions = {},
 ): Promise<MenuResponse> => {
+  const { familiaId, ...rest } = options;
   const res = await fetch("/api/menu", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ members, ...options }),
+    body: JSON.stringify({ members, familia_id: familiaId, ...rest }),
   });
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as { error?: string };
     throw new Error(body.error ?? "No hemos podido generar el menú");
   }
   return (await res.json()) as MenuResponse;
+};
+
+// Fecha local en formato YYYY-MM-DD (sin desfase de zona horaria).
+export const toISODate = (d: Date): string => {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 };
 
 export const getWeekRange = (today: Date) => {

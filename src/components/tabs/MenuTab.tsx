@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { MenuDayCard } from "@/components/MenuDayCard";
+import { FavoritesModal } from "@/components/FavoritesModal";
+import type { Favorito } from "@/lib/db";
 import type { Member } from "@/lib/family";
 import {
   SPANISH_DAYS,
@@ -14,28 +16,48 @@ import {
 type Props = {
   members: Member[];
   menu: MenuResponse | null;
+  familiaId: string;
+  favoritos: Favorito[];
   onMenuChange: (menu: MenuResponse | null) => void;
+  onToggleFavorito: (nombre: string) => void;
+  onAddFavoritoManual: (nombre: string) => void;
+  onRemoveFavorito: (id: string) => void;
   onGoFamilia: () => void;
 };
 
 export function MenuTab({
   members,
   menu,
+  familiaId,
+  favoritos,
   onMenuChange,
+  onToggleFavorito,
+  onAddFavoritoManual,
+  onRemoveFavorito,
   onGoFamilia,
 }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [regenerating, setRegenerating] = useState<Set<SpanishDay>>(new Set());
+  const [favOpen, setFavOpen] = useState(false);
 
   const week = useMemo(() => getWeekRange(new Date()), []);
+
+  const favSet = useMemo(
+    () => new Set(favoritos.map((f) => f.nombre.toLowerCase())),
+    [favoritos],
+  );
+  const isFavorite = useCallback(
+    (nombre: string) => favSet.has(nombre.toLowerCase()),
+    [favSet],
+  );
 
   const generate = useCallback(async () => {
     if (members.length === 0) return;
     setLoading(true);
     setError(null);
     try {
-      const data = await fetchMenu(members);
+      const data = await fetchMenu(members, { familiaId });
       onMenuChange(data);
     } catch (err) {
       setError(
@@ -46,7 +68,7 @@ export function MenuTab({
     } finally {
       setLoading(false);
     }
-  }, [members, onMenuChange]);
+  }, [members, familiaId, onMenuChange]);
 
   const regenerateDay = useCallback(
     async (dia: SpanishDay) => {
@@ -66,6 +88,7 @@ export function MenuTab({
           modo: "dia",
           dia,
           platosExistentes,
+          familiaId,
         });
         const fresh = data.semana[0];
         if (!fresh) throw new Error("Respuesta vacía de Gemini");
@@ -88,12 +111,14 @@ export function MenuTab({
         });
       }
     },
-    [members, menu, onMenuChange],
+    [members, menu, familiaId, onMenuChange],
   );
 
   // Auto-generar al entrar a la pestaña si hay familia pero no menú aún.
   useEffect(() => {
     if (members.length > 0 && !menu && !loading && !error) {
+      // Auto-generación al entrar en la pestaña (fetch-on-mount intencionado).
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       void generate();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -119,29 +144,51 @@ export function MenuTab({
           <p className="mt-2 text-base text-gray-600">{week.label}</p>
         </div>
 
-        <button
-          type="button"
-          onClick={() => void generate()}
-          disabled={loading || noFamily}
-          aria-label="Regenerar menú"
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-700 shadow-sm transition-colors hover:border-green-600 hover:text-green-700 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          <svg
-            aria-hidden
-            viewBox="0 0 24 24"
-            className={"h-5 w-5 " + (loading ? "animate-spin" : "")}
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
+        <div className="flex shrink-0 items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setFavOpen(true)}
+            aria-label="Mis platos favoritos"
+            className="flex h-11 w-11 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-700 shadow-sm transition-colors hover:border-green-600 hover:text-green-600"
           >
-            <path d="M3 12a9 9 0 0 1 15.5-6.36L21 8" />
-            <path d="M21 3v5h-5" />
-            <path d="M21 12a9 9 0 0 1-15.5 6.36L3 16" />
-            <path d="M3 21v-5h5" />
-          </svg>
-        </button>
+            <svg
+              aria-hidden
+              viewBox="0 0 24 24"
+              className="h-5 w-5"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M19 14c1.5-1.5 3-3.3 3-5.5A4.5 4.5 0 0 0 12 5.5 4.5 4.5 0 0 0 2 8.5C2 10.7 3.5 12.5 5 14l7 7Z" />
+            </svg>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => void generate()}
+            disabled={loading || noFamily}
+            aria-label="Regenerar menú"
+            className="flex h-11 w-11 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-700 shadow-sm transition-colors hover:border-green-600 hover:text-green-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <svg
+              aria-hidden
+              viewBox="0 0 24 24"
+              className={"h-5 w-5 " + (loading ? "animate-spin" : "")}
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M3 12a9 9 0 0 1 15.5-6.36L21 8" />
+              <path d="M21 3v5h-5" />
+              <path d="M21 12a9 9 0 0 1-15.5 6.36L3 16" />
+              <path d="M3 21v-5h5" />
+            </svg>
+          </button>
+        </div>
       </header>
 
       {noFamily && (
@@ -198,9 +245,20 @@ export function MenuTab({
               cena={d.cena}
               regenerating={regenerating.has(d.dia)}
               onRegenerate={() => void regenerateDay(d.dia)}
+              isFavorite={isFavorite}
+              onToggleFavorite={onToggleFavorito}
             />
           ))}
         </section>
+      )}
+
+      {favOpen && (
+        <FavoritesModal
+          favoritos={favoritos}
+          onAdd={onAddFavoritoManual}
+          onDelete={onRemoveFavorito}
+          onClose={() => setFavOpen(false)}
+        />
       )}
     </main>
   );

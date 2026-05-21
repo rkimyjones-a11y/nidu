@@ -10,7 +10,6 @@ export const RESTRICTIONS = [
   "sin huevo",
   "halal",
   "kosher",
-  "dieta mediterránea",
   "sin cerdo",
   "sin alergias",
 ] as const;
@@ -18,7 +17,6 @@ export type Restriction = (typeof RESTRICTIONS)[number];
 
 // Marcar "vegano" implica deseleccionar estas opciones (y viceversa).
 export const VEGANO_INCOMPATIBLE: readonly Restriction[] = [
-  "vegetariano",
   "sin lactosa",
   "sin huevo",
 ];
@@ -42,6 +40,7 @@ export type Member = {
   age: Age;
   restrictions: Restriction[];
   cookingDays: Day[];
+  dislikes: string;
 };
 
 export const getInitials = (name: string) => {
@@ -51,38 +50,34 @@ export const getInitials = (name: string) => {
   return (parts[0]![0]! + parts[1]![0]!).toUpperCase();
 };
 
-export const FAMILY_STORAGE_KEY = "nidu_familia";
-
-const isValidMember = (m: unknown): m is Member => {
-  if (!m || typeof m !== "object") return false;
-  const v = m as Record<string, unknown>;
-  return (
-    typeof v.id === "string" &&
-    typeof v.name === "string" &&
-    (v.age === "adulto" || v.age === "niño") &&
-    Array.isArray(v.restrictions) &&
-    Array.isArray(v.cookingDays)
-  );
-};
-
-export const readFamily = (): Member[] | null => {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = window.localStorage.getItem(FAMILY_STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return null;
-    return parsed.filter(isValidMember);
-  } catch {
-    return null;
+// Aplica las reglas de exclusión al alternar una restricción.
+export const toggleRestriction = (
+  current: Restriction[],
+  r: Restriction,
+): Restriction[] => {
+  // "Sin alergias" es exclusiva con todo lo demás
+  if (r === "sin alergias") {
+    return current.includes(r) ? [] : [r];
   }
+  let next = current.filter((x) => x !== "sin alergias");
+
+  // "Vegano" excluye sin lactosa / sin huevo (redundantes)
+  if (r === "vegano") {
+    if (next.includes("vegano")) {
+      return next.filter((x) => x !== "vegano");
+    }
+    return [...next.filter((x) => !VEGANO_INCOMPATIBLE.includes(x)), "vegano"];
+  }
+
+  // Activar sin lactosa / sin huevo retira "vegano"
+  if (VEGANO_INCOMPATIBLE.includes(r)) {
+    next = next.filter((x) => x !== "vegano");
+  }
+
+  return next.includes(r)
+    ? next.filter((x) => x !== r)
+    : [...next, r];
 };
 
-export const writeFamily = (members: Member[]): void => {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(FAMILY_STORAGE_KEY, JSON.stringify(members));
-  } catch {
-    // quota exceeded or storage disabled — non-fatal
-  }
-};
+// Clave de localStorage que recuerda la familia activa entre sesiones.
+export const ACTIVE_FAMILY_KEY = "nidu_familia_id";

@@ -1,81 +1,53 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { BottomNav, type Tab } from "@/components/BottomNav";
-import { CompraTab } from "@/components/tabs/CompraTab";
-import { FamilyTab } from "@/components/tabs/FamilyTab";
-import { MenuTab } from "@/components/tabs/MenuTab";
-import { readFamily, writeFamily, type Member } from "@/lib/family";
-import {
-  readCachedMenu,
-  writeCachedMenu,
-  type MenuResponse,
-} from "@/lib/menuApi";
+import { useEffect, useState } from "react";
+import { AppShell } from "@/components/AppShell";
+import { Welcome } from "@/components/Welcome";
+import { ACTIVE_FAMILY_KEY } from "@/lib/family";
 
-export default function App() {
+export default function Page() {
   const [hydrated, setHydrated] = useState(false);
-  const [members, setMembers] = useState<Member[]>([]);
-  const [menu, setMenu] = useState<MenuResponse | null>(null);
-  const [checked, setChecked] = useState<Set<string>>(new Set());
-  const [activeTab, setActiveTab] = useState<Tab>("familia");
+  const [familiaId, setFamiliaId] = useState<string | null>(null);
 
-  // Hidratar desde localStorage al montar
   useEffect(() => {
-    const storedFamily = readFamily() ?? [];
-    const storedMenu = readCachedMenu();
-    setMembers(storedFamily);
-    setMenu(storedMenu);
-    // Si ya hay familia guardada, saltamos directamente al menú
-    if (storedFamily.length > 0) setActiveTab("menu");
+    let id: string | null = null;
+    try {
+      id = window.localStorage.getItem(ACTIVE_FAMILY_KEY);
+    } catch {
+      /* storage no disponible */
+    }
+    // Lectura de localStorage tras montar: patrón de hidratación seguro.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setFamiliaId(id);
     setHydrated(true);
   }, []);
 
-  // Persistir cambios en la familia
-  useEffect(() => {
-    if (!hydrated) return;
-    writeFamily(members);
-  }, [members, hydrated]);
-
-  // Persistir el menú generado para que ambas pestañas lo compartan
-  const updateMenu = useCallback((next: MenuResponse | null) => {
-    setMenu(next);
-    if (next) {
-      writeCachedMenu(next);
+  const enter = (id: string) => {
+    try {
+      window.localStorage.setItem(ACTIVE_FAMILY_KEY, id);
+    } catch {
+      /* storage no disponible */
     }
-  }, []);
+    setFamiliaId(id);
+  };
 
-  // Antes de hidratar evitamos parpadeos sirviendo un esqueleto neutro
+  const leave = () => {
+    try {
+      window.localStorage.removeItem(ACTIVE_FAMILY_KEY);
+    } catch {
+      /* storage no disponible */
+    }
+    setFamiliaId(null);
+  };
+
+  // Esqueleto neutro antes de leer localStorage (evita mismatch SSR/cliente)
   if (!hydrated) {
     return <div className="min-h-dvh bg-white" />;
   }
 
-  return (
-    <div className="min-h-dvh bg-white">
-      <div className="pb-20">
-        {activeTab === "familia" && (
-          <FamilyTab members={members} onChange={setMembers} />
-        )}
-        {activeTab === "menu" && (
-          <MenuTab
-            members={members}
-            menu={menu}
-            onMenuChange={updateMenu}
-            onGoFamilia={() => setActiveTab("familia")}
-          />
-        )}
-        {activeTab === "compra" && (
-          <CompraTab
-            members={members}
-            menu={menu}
-            checked={checked}
-            onCheckedChange={setChecked}
-            onGoMenu={() => setActiveTab("menu")}
-            onGoFamilia={() => setActiveTab("familia")}
-          />
-        )}
-      </div>
+  if (!familiaId) {
+    return <Welcome onReady={enter} />;
+  }
 
-      <BottomNav active={activeTab} onChange={setActiveTab} />
-    </div>
-  );
+  return <AppShell familiaId={familiaId} onLeave={leave} />;
 }
