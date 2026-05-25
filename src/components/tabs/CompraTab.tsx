@@ -17,7 +17,7 @@ import {
 import {
   CATEGORY_LABELS,
   CATEGORY_ORDER,
-  aggregateIngredients,
+  consolidarIngredientes,
   formatQuantity,
   formatWeekSentence,
   ingredientKey,
@@ -85,7 +85,7 @@ export function CompraTab({
   const grouped = useMemo(() => {
     const map = new Map<Category, Ingredient[]>();
     if (!menu) return map;
-    const all = aggregateIngredients(dishesFromMenu(menu));
+    const all = consolidarIngredientes(dishesFromMenu(menu));
     for (const ing of all) {
       const list = map.get(ing.category) ?? [];
       list.push(ing);

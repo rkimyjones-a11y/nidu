@@ -142,8 +142,14 @@ const COMMON_RULES = `Reglas estrictas:
 2. Para cada plato, "apto": true si todos pueden comerlo tal cual; false si algún miembro necesita adaptación.
 3. Si "apto" es false, "adaptacion" describe brevemente la variante (ej. "Versión sin gluten para Lucía"). Si es true, "adaptacion" debe ser cadena vacía "".
 4. "cocinero" son las iniciales en mayúsculas (2 letras) del adulto que cocina ese día, priorizando los adultos disponibles ese día. Si nadie está disponible, elige cualquier adulto.
-5. Para cada plato incluye una lista de ingredientes con cantidad numérica, unidad (g, kg, ml, l, ud, bote, paquete, manojo) y categoría (carnes, verduras, lacteos, despensa, otros).
-6. "tiempo" en minutos, entero. Comidas: 25–50 min. Cenas: 15–30 min.`;
+5. Para cada plato incluye los ingredientes con cantidades exactas: cantidad numérica, unidad (g, kg, ml, l, ud, bote, paquete, manojo) y categoría (carnes, verduras, lacteos, despensa, otros).
+6. "tiempo" en minutos, entero. Comidas: 25–50 min. Cenas: 15–30 min.
+
+IMPORTANTE sobre ingredientes:
+- NO incluyas ingredientes básicos de despensa que todo el mundo tiene: sal, pimienta, aceite de oliva, aceite, agua, azúcar, vinagre, ajo en polvo, papel de cocina, papel film, bicarbonato, levadura química, colorante.
+- NO incluyas en los ingredientes de ningún plato: sal, pimienta, aceite, aceite de oliva, agua, azúcar, vinagre, especias básicas en polvo, papel de horno. Estas cosas las tiene todo el mundo en casa.
+- SÍ incluye: ajo fresco, cebolla, especias específicas poco comunes, caldos, salsas específicas.
+- Usa el mismo nombre (en singular) para un ingrediente que se repita en varios platos, para poder consolidarlo en la lista de la compra.`;
 
 const favoritesBlock = (favoritos: string[]): string =>
   favoritos.length > 0
