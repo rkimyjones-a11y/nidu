@@ -6,22 +6,29 @@ import { Logo } from "@/components/Logo";
 import { CompraTab } from "@/components/tabs/CompraTab";
 import { FamilyTab } from "@/components/tabs/FamilyTab";
 import { MenuTab } from "@/components/tabs/MenuTab";
+import { RecetarioTab } from "@/components/tabs/RecetarioTab";
 import type { Member } from "@/lib/family";
 import {
   addFavorito,
   deleteFavorito,
   deleteMiembro,
+  deleteReceta,
   getFamiliaById,
   getFavoritos,
   getLatestMenu,
   getMiembros,
+  getRecetas,
   insertMiembro,
+  insertReceta,
   saveMenu,
   updateMiembro,
+  updateReceta,
   type Familia,
   type Favorito,
+  type Receta,
 } from "@/lib/db";
 import type { MemberDraft } from "@/components/MemberModal";
+import type { RecetaDraft } from "@/components/RecetaModal";
 import { getWeekRange, toISODate, type MenuResponse } from "@/lib/menuApi";
 
 type Props = {
@@ -33,6 +40,7 @@ export function AppShell({ familiaId, onLeave }: Props) {
   const [familia, setFamilia] = useState<Familia | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
   const [favoritos, setFavoritos] = useState<Favorito[]>([]);
+  const [recetas, setRecetas] = useState<Receta[]>([]);
   const [menu, setMenu] = useState<MenuResponse | null>(null);
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [activeTab, setActiveTab] = useState<Tab>("familia");
@@ -49,17 +57,20 @@ export function AppShell({ familiaId, onLeave }: Props) {
     let cancelled = false;
     (async () => {
       try {
-        const [fam, mem, fav, lastMenu] = await Promise.all([
+        const [fam, mem, fav, lastMenu, recs] = await Promise.all([
           getFamiliaById(familiaId),
           getMiembros(familiaId),
           getFavoritos(familiaId),
           getLatestMenu(familiaId),
+          // Resiliente: si la tabla "recetas" aún no existe, no bloquea la app.
+          getRecetas(familiaId).catch(() => [] as Receta[]),
         ]);
         if (cancelled) return;
         setFamilia(fam);
         setMembers(mem);
         setFavoritos(fav);
         setMenu(lastMenu);
+        setRecetas(recs);
         setActiveTab(mem.length > 0 ? "menu" : "familia");
       } catch (err) {
         if (!cancelled) {
@@ -127,6 +138,26 @@ export function AppShell({ familiaId, onLeave }: Props) {
     setFavoritos((prev) => prev.filter((f) => f.id !== id));
   }, []);
 
+  // ---- Recetario ------------------------------------------------------------
+
+  const addReceta = useCallback(
+    async (draft: RecetaDraft) => {
+      const created = await insertReceta(familiaId, draft);
+      setRecetas((prev) => [created, ...prev]);
+    },
+    [familiaId],
+  );
+
+  const editReceta = useCallback(async (receta: Receta) => {
+    await updateReceta(receta);
+    setRecetas((prev) => prev.map((r) => (r.id === receta.id ? receta : r)));
+  }, []);
+
+  const removeReceta = useCallback(async (id: string) => {
+    await deleteReceta(id);
+    setRecetas((prev) => prev.filter((r) => r.id !== id));
+  }, []);
+
   // ---- Menú -----------------------------------------------------------------
 
   const updateMenu = useCallback(
@@ -188,6 +219,7 @@ export function AppShell({ familiaId, onLeave }: Props) {
             menu={menu}
             familiaId={familiaId}
             favoritos={favoritos}
+            recetas={recetas}
             onMenuChange={updateMenu}
             onToggleFavorito={toggleFavorito}
             onAddFavoritoManual={addFavoritoManual}
@@ -195,10 +227,19 @@ export function AppShell({ familiaId, onLeave }: Props) {
             onGoFamilia={() => setActiveTab("familia")}
           />
         )}
+        {activeTab === "recetario" && (
+          <RecetarioTab
+            recetas={recetas}
+            onAdd={addReceta}
+            onEdit={editReceta}
+            onRemove={removeReceta}
+          />
+        )}
         {activeTab === "compra" && (
           <CompraTab
             members={members}
             menu={menu}
+            familiaId={familiaId}
             checked={checked}
             onCheckedChange={setChecked}
             onGoMenu={() => setActiveTab("menu")}

@@ -203,3 +203,146 @@ export const getLatestMenu = async (
   if (error) throw new Error(error.message);
   return (data as { datos: MenuResponse } | null)?.datos ?? null;
 };
+
+// ---- Compra extra ("Otras cosas") ------------------------------------------
+
+export type CompraExtra = {
+  id: string;
+  nombre: string;
+  recurrente: boolean;
+};
+
+export const getCompraExtra = async (
+  familiaId: string,
+): Promise<CompraExtra[]> => {
+  const { data, error } = await supabase
+    .from("compra_extra")
+    .select("id, nombre, recurrente")
+    .eq("familia_id", familiaId)
+    .order("created_at", { ascending: true });
+  if (error) throw new Error(error.message);
+  return data as CompraExtra[];
+};
+
+export const addCompraExtra = async (
+  familiaId: string,
+  nombre: string,
+): Promise<CompraExtra> => {
+  const { data, error } = await supabase
+    .from("compra_extra")
+    .insert({ familia_id: familiaId, nombre: nombre.trim() })
+    .select("id, nombre, recurrente")
+    .single();
+  if (error) throw new Error(error.message);
+  return data as CompraExtra;
+};
+
+export const setCompraExtraRecurrente = async (
+  id: string,
+  recurrente: boolean,
+): Promise<void> => {
+  const { error } = await supabase
+    .from("compra_extra")
+    .update({ recurrente })
+    .eq("id", id);
+  if (error) throw new Error(error.message);
+};
+
+export const deleteCompraExtra = async (id: string): Promise<void> => {
+  const { error } = await supabase.from("compra_extra").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+};
+
+// ---- Recetario --------------------------------------------------------------
+
+export type RecetaIngrediente = { nombre: string; cantidad: string };
+export type RecetaOrigen = "manual" | "escaneada" | "favorita";
+
+export type Receta = {
+  id: string;
+  nombre: string;
+  tiempo: number | null;
+  categoria: string;
+  ingredientes: RecetaIngrediente[];
+  notas: string;
+  origen: RecetaOrigen;
+  imagen_url: string | null;
+};
+
+type RecetaRow = {
+  id: string;
+  nombre: string;
+  tiempo: number | null;
+  categoria: string | null;
+  ingredientes: RecetaIngrediente[] | null;
+  notas: string | null;
+  origen: string | null;
+  imagen_url: string | null;
+};
+
+const rowToReceta = (r: RecetaRow): Receta => ({
+  id: r.id,
+  nombre: r.nombre,
+  tiempo: r.tiempo,
+  categoria: r.categoria ?? "Otro",
+  ingredientes: Array.isArray(r.ingredientes) ? r.ingredientes : [],
+  notas: r.notas ?? "",
+  origen: (r.origen as RecetaOrigen) ?? "manual",
+  imagen_url: r.imagen_url,
+});
+
+const RECETA_COLS =
+  "id, nombre, tiempo, categoria, ingredientes, notas, origen, imagen_url";
+
+export const getRecetas = async (familiaId: string): Promise<Receta[]> => {
+  const { data, error } = await supabase
+    .from("recetas")
+    .select(RECETA_COLS)
+    .eq("familia_id", familiaId)
+    .order("created_at", { ascending: false });
+  if (error) throw new Error(error.message);
+  return (data as RecetaRow[]).map(rowToReceta);
+};
+
+export const insertReceta = async (
+  familiaId: string,
+  data: Omit<Receta, "id">,
+): Promise<Receta> => {
+  const { data: row, error } = await supabase
+    .from("recetas")
+    .insert({
+      familia_id: familiaId,
+      nombre: data.nombre,
+      tiempo: data.tiempo,
+      categoria: data.categoria,
+      ingredientes: data.ingredientes,
+      notas: data.notas,
+      origen: data.origen,
+      imagen_url: data.imagen_url,
+    })
+    .select(RECETA_COLS)
+    .single();
+  if (error) throw new Error(error.message);
+  return rowToReceta(row as RecetaRow);
+};
+
+export const updateReceta = async (receta: Receta): Promise<void> => {
+  const { error } = await supabase
+    .from("recetas")
+    .update({
+      nombre: receta.nombre,
+      tiempo: receta.tiempo,
+      categoria: receta.categoria,
+      ingredientes: receta.ingredientes,
+      notas: receta.notas,
+      origen: receta.origen,
+      imagen_url: receta.imagen_url,
+    })
+    .eq("id", receta.id);
+  if (error) throw new Error(error.message);
+};
+
+export const deleteReceta = async (id: string): Promise<void> => {
+  const { error } = await supabase.from("recetas").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+};

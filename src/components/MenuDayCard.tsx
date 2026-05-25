@@ -1,11 +1,14 @@
 import type { GeneratedDish, ProteinaLevel, SpanishDay } from "@/lib/menuApi";
 
+export type MealSlot = "comida" | "cena";
+
 type Props = {
   day: SpanishDay;
   comida: GeneratedDish;
   cena: GeneratedDish;
-  regenerating?: boolean;
-  onRegenerate?: () => void;
+  regeneratingComida?: boolean;
+  regeneratingCena?: boolean;
+  onChangeMeal?: (slot: MealSlot) => void;
   isFavorite?: (nombre: string) => boolean;
   onToggleFavorite?: (nombre: string) => void;
 };
@@ -36,30 +39,7 @@ function ClockIcon() {
   );
 }
 
-function RefreshIcon({ spinning }: { spinning?: boolean }) {
-  return (
-    <svg
-      aria-hidden
-      viewBox="0 0 24 24"
-      className={"h-4 w-4 " + (spinning ? "animate-spin" : "")}
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M3 12a9 9 0 0 1 15.5-6.36L21 8" />
-      <path d="M21 3v5h-5" />
-      <path d="M21 12a9 9 0 0 1-15.5 6.36L3 16" />
-      <path d="M3 21v-5h5" />
-    </svg>
-  );
-}
-
-const PROTEIN_STYLES: Record<
-  ProteinaLevel,
-  { bg: string; label: string }
-> = {
+const PROTEIN_STYLES: Record<ProteinaLevel, { bg: string; label: string }> = {
   alta: { bg: "bg-green-500", label: "Proteína alta" },
   media: { bg: "bg-orange-500", label: "Proteína media" },
   baja: { bg: "bg-gray-400", label: "Proteína baja" },
@@ -72,9 +52,7 @@ function ProteinDot({ level }: { level: ProteinaLevel }) {
       role="img"
       aria-label={style.label}
       title={style.label}
-      className={
-        "inline-block h-2 w-2 shrink-0 rounded-full " + style.bg
-      }
+      className={"inline-block h-2 w-2 shrink-0 rounded-full " + style.bg}
     />
   );
 }
@@ -118,21 +96,41 @@ function HeartButton({
 function MealRow({
   label,
   dish,
+  regenerating,
+  onChange,
   isFavorite,
   onToggleFavorite,
 }: {
   label: string;
   dish: GeneratedDish;
+  regenerating?: boolean;
+  onChange?: () => void;
   isFavorite?: (nombre: string) => boolean;
   onToggleFavorite?: (nombre: string) => void;
 }) {
+  if (regenerating) {
+    return (
+      <div className="flex flex-col items-center justify-center py-6">
+        <div className="h-5 w-5 animate-spin rounded-full border-2 border-green-200 border-t-green-600" />
+        <p className="mt-2 text-xs text-gray-500">Buscando platos…</p>
+      </div>
+    );
+  }
+
+  const fromRecetario = dish.origen === "recetario";
+
   return (
     <div>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-[10px] font-medium uppercase tracking-wide text-gray-400">
-            {label}
-          </p>
+          <div className="flex items-center gap-2">
+            <p className="text-[10px] font-medium uppercase tracking-wide text-gray-400">
+              {label}
+            </p>
+            <span className="text-[10px] font-medium text-gray-400">
+              {fromRecetario ? "📖 Del recetario" : "🤖 IA"}
+            </span>
+          </div>
           <p className="mt-0.5 text-base font-semibold leading-snug text-gray-900">
             {dish.nombre}
           </p>
@@ -180,6 +178,16 @@ function MealRow({
             {dish.adaptacion ?? "Adaptación para algún miembro"}
           </span>
         )}
+
+        {onChange && (
+          <button
+            type="button"
+            onClick={onChange}
+            className="ml-auto inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-gray-500 transition-colors hover:bg-gray-100 hover:text-green-700"
+          >
+            ↺ Cambiar
+          </button>
+        )}
       </div>
     </div>
   );
@@ -189,8 +197,9 @@ export function MenuDayCard({
   day,
   comida,
   cena,
-  regenerating = false,
-  onRegenerate,
+  regeneratingComida = false,
+  regeneratingCena = false,
+  onChangeMeal,
   isFavorite,
   onToggleFavorite,
 }: Props) {
@@ -204,41 +213,27 @@ export function MenuDayCard({
           {SHORT[day]}
         </div>
         <h3 className="flex-1 text-sm font-semibold text-gray-700">{day}</h3>
-        {onRegenerate && (
-          <button
-            type="button"
-            onClick={onRegenerate}
-            disabled={regenerating}
-            aria-label={`Regenerar ${day}`}
-            className="flex h-7 w-7 items-center justify-center rounded-md text-gray-400 transition-colors hover:bg-gray-100 hover:text-green-600 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <RefreshIcon spinning={regenerating} />
-          </button>
-        )}
       </div>
 
-      {regenerating ? (
-        <div className="mt-4 flex flex-col items-center justify-center py-8">
-          <div className="h-6 w-6 animate-spin rounded-full border-2 border-green-200 border-t-green-600" />
-          <p className="mt-2 text-sm text-gray-500">Buscando platos…</p>
-        </div>
-      ) : (
-        <div className="mt-4 space-y-4">
-          <MealRow
-            label="Comida"
-            dish={comida}
-            isFavorite={isFavorite}
-            onToggleFavorite={onToggleFavorite}
-          />
-          <div className="border-t border-gray-100" />
-          <MealRow
-            label="Cena"
-            dish={cena}
-            isFavorite={isFavorite}
-            onToggleFavorite={onToggleFavorite}
-          />
-        </div>
-      )}
+      <div className="mt-4 space-y-4">
+        <MealRow
+          label="Comida"
+          dish={comida}
+          regenerating={regeneratingComida}
+          onChange={onChangeMeal ? () => onChangeMeal("comida") : undefined}
+          isFavorite={isFavorite}
+          onToggleFavorite={onToggleFavorite}
+        />
+        <div className="border-t border-gray-100" />
+        <MealRow
+          label="Cena"
+          dish={cena}
+          regenerating={regeneratingCena}
+          onChange={onChangeMeal ? () => onChangeMeal("cena") : undefined}
+          isFavorite={isFavorite}
+          onToggleFavorite={onToggleFavorite}
+        />
+      </div>
     </article>
   );
 }

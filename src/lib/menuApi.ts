@@ -38,6 +38,8 @@ export type GeneratedDish = {
   ingredientes: GeneratedIngredient[];
   // Optional para compatibilidad con menús generados antes de añadir el campo.
   nutrientes?: Nutrientes;
+  // Origen del plato: generado por IA (por defecto) o elegido del recetario.
+  origen?: "ia" | "recetario";
 };
 
 export type GeneratedDay = {

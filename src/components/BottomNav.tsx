@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react";
 
-export type Tab = "familia" | "menu" | "compra";
+export type Tab = "familia" | "menu" | "recetario" | "compra";
 
 function PeopleIcon() {
   return (
@@ -44,6 +44,24 @@ function CalendarIcon() {
   );
 }
 
+function BookIcon() {
+  return (
+    <svg
+      aria-hidden
+      viewBox="0 0 24 24"
+      className="h-5 w-5"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+      <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z" />
+    </svg>
+  );
+}
+
 function CartIcon() {
   return (
     <svg
@@ -66,6 +84,7 @@ function CartIcon() {
 const TABS: { id: Tab; label: string; icon: ReactNode }[] = [
   { id: "familia", label: "Familia", icon: <PeopleIcon /> },
   { id: "menu", label: "Menú", icon: <CalendarIcon /> },
+  { id: "recetario", label: "Recetario", icon: <BookIcon /> },
   { id: "compra", label: "Compra", icon: <CartIcon /> },
 ];
 

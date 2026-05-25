@@ -1,23 +1,27 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { MenuDayCard } from "@/components/MenuDayCard";
+import { MenuDayCard, type MealSlot } from "@/components/MenuDayCard";
 import { FavoritesModal } from "@/components/FavoritesModal";
-import type { Favorito } from "@/lib/db";
+import { ChangeMealModal } from "@/components/ChangeMealModal";
+import type { Favorito, Receta } from "@/lib/db";
 import type { Member } from "@/lib/family";
 import {
   SPANISH_DAYS,
   fetchMenu,
   getWeekRange,
+  type GeneratedDish,
   type MenuResponse,
   type SpanishDay,
 } from "@/lib/menuApi";
+import type { Category, Unit } from "@/lib/shopping";
 
 type Props = {
   members: Member[];
   menu: MenuResponse | null;
   familiaId: string;
   favoritos: Favorito[];
+  recetas: Receta[];
   onMenuChange: (menu: MenuResponse | null) => void;
   onToggleFavorito: (nombre: string) => void;
   onAddFavoritoManual: (nombre: string) => void;
@@ -25,11 +29,78 @@ type Props = {
   onGoFamilia: () => void;
 };
 
+const slotKey = (dia: SpanishDay, slot: MealSlot) => `${dia}::${slot}`;
+
+// ---- Conversión receta → plato del menú ------------------------------------
+
+const recetaCatToShopping = (c: string): Category => {
+  switch (c) {
+    case "Carne":
+    case "Pescado":
+      return "carnes";
+    case "Vegetariano":
+      return "verduras";
+    case "Pasta":
+    case "Legumbres":
+      return "despensa";
+    default:
+      return "otros";
+  }
+};
+
+const UNIT_ALIASES: Record<string, Unit> = {
+  g: "g",
+  kg: "kg",
+  ml: "ml",
+  l: "l",
+  ud: "ud",
+  uds: "ud",
+  unidad: "ud",
+  unidades: "ud",
+  bote: "bote",
+  botes: "bote",
+  paquete: "paquete",
+  paquetes: "paquete",
+  manojo: "manojo",
+  manojos: "manojo",
+};
+
+const parseCantidad = (text: string): { cantidad: number; unidad: Unit } => {
+  const m = text.trim().match(/^(\d+(?:[.,]\d+)?)\s*([a-zA-Záéíóú]+)?/);
+  if (m) {
+    const n = parseFloat(m[1]!.replace(",", "."));
+    const rawUnit = (m[2] ?? "ud").toLowerCase();
+    if (!Number.isNaN(n)) {
+      return { cantidad: n, unidad: UNIT_ALIASES[rawUnit] ?? "ud" };
+    }
+  }
+  return { cantidad: 1, unidad: "ud" };
+};
+
+const recetaToDish = (r: Receta, cocinero: string): GeneratedDish => ({
+  nombre: r.nombre,
+  tiempo: r.tiempo ?? 30,
+  apto: true,
+  adaptacion: null,
+  cocinero,
+  ingredientes: r.ingredientes.map((i) => {
+    const { cantidad, unidad } = parseCantidad(i.cantidad);
+    return {
+      nombre: i.nombre,
+      cantidad,
+      unidad,
+      categoria: recetaCatToShopping(r.categoria),
+    };
+  }),
+  origen: "recetario",
+});
+
 export function MenuTab({
   members,
   menu,
   familiaId,
   favoritos,
+  recetas,
   onMenuChange,
   onToggleFavorito,
   onAddFavoritoManual,
@@ -38,8 +109,12 @@ export function MenuTab({
 }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [regenerating, setRegenerating] = useState<Set<SpanishDay>>(new Set());
+  const [regenerating, setRegenerating] = useState<Set<string>>(new Set());
   const [favOpen, setFavOpen] = useState(false);
+  const [changeTarget, setChangeTarget] = useState<{
+    dia: SpanishDay;
+    slot: MealSlot;
+  } | null>(null);
 
   const week = useMemo(() => getWeekRange(new Date()), []);
 
@@ -70,19 +145,20 @@ export function MenuTab({
     }
   }, [members, familiaId, onMenuChange]);
 
-  const regenerateDay = useCallback(
-    async (dia: SpanishDay) => {
+  const regenerateSlotAI = useCallback(
+    async (dia: SpanishDay, slot: MealSlot) => {
       if (!menu || members.length === 0) return;
-      setRegenerating((prev) => {
-        const next = new Set(prev);
-        next.add(dia);
-        return next;
-      });
+      const key = slotKey(dia, slot);
+      setRegenerating((prev) => new Set(prev).add(key));
       setError(null);
       try {
-        const platosExistentes = menu.semana
-          .filter((d) => d.dia !== dia)
-          .flatMap((d) => [d.comida.nombre, d.cena.nombre]);
+        // Evita repetir cualquier plato actual (incluido el otro slot del día).
+        const platosExistentes = menu.semana.flatMap((d) => {
+          if (d.dia === dia) {
+            return slot === "comida" ? [d.cena.nombre] : [d.comida.nombre];
+          }
+          return [d.comida.nombre, d.cena.nombre];
+        });
 
         const data = await fetchMenu(members, {
           modo: "dia",
@@ -92,26 +168,46 @@ export function MenuTab({
         });
         const fresh = data.semana[0];
         if (!fresh) throw new Error("Respuesta vacía de Gemini");
+        const freshMeal: GeneratedDish = { ...fresh[slot], origen: "ia" };
 
         onMenuChange({
           ...menu,
-          semana: menu.semana.map((d) => (d.dia === dia ? fresh : d)),
+          semana: menu.semana.map((d) =>
+            d.dia === dia ? { ...d, [slot]: freshMeal } : d,
+          ),
         });
       } catch (err) {
         setError(
           err instanceof Error
             ? err.message
-            : `No hemos podido regenerar ${dia}.`,
+            : `No hemos podido cambiar el plato de ${dia}.`,
         );
       } finally {
         setRegenerating((prev) => {
           const next = new Set(prev);
-          next.delete(dia);
+          next.delete(key);
           return next;
         });
       }
     },
     [members, menu, familiaId, onMenuChange],
+  );
+
+  const assignRecipe = useCallback(
+    (dia: SpanishDay, slot: MealSlot, receta: Receta) => {
+      if (!menu) return;
+      const day = menu.semana.find((d) => d.dia === dia);
+      const cocinero = day ? day[slot].cocinero : "";
+      const dish = recetaToDish(receta, cocinero);
+      onMenuChange({
+        ...menu,
+        semana: menu.semana.map((d) =>
+          d.dia === dia ? { ...d, [slot]: dish } : d,
+        ),
+      });
+      setChangeTarget(null);
+    },
+    [menu, onMenuChange],
   );
 
   // Auto-generar al entrar a la pestaña si hay familia pero no menú aún.
@@ -223,7 +319,7 @@ export function MenuTab({
           role="alert"
           className="mt-6 rounded-2xl border border-red-100 bg-red-50 px-4 py-4 text-sm text-red-700"
         >
-          <p className="font-semibold">No hemos podido generar el menú.</p>
+          <p className="font-semibold">Algo no ha ido bien.</p>
           <p className="mt-1 text-red-600">{error}</p>
           <button
             type="button"
@@ -236,15 +332,16 @@ export function MenuTab({
       )}
 
       {menu && (
-        <section className="mt-8 space-y-3" aria-busy={loading}>
+        <section className="mt-8 space-y-3">
           {orderedDays.map((d) => (
             <MenuDayCard
               key={d.dia}
               day={d.dia}
               comida={d.comida}
               cena={d.cena}
-              regenerating={regenerating.has(d.dia)}
-              onRegenerate={() => void regenerateDay(d.dia)}
+              regeneratingComida={regenerating.has(slotKey(d.dia, "comida"))}
+              regeneratingCena={regenerating.has(slotKey(d.dia, "cena"))}
+              onChangeMeal={(slot) => setChangeTarget({ dia: d.dia, slot })}
               isFavorite={isFavorite}
               onToggleFavorite={onToggleFavorito}
             />
@@ -258,6 +355,21 @@ export function MenuTab({
           onAdd={onAddFavoritoManual}
           onDelete={onRemoveFavorito}
           onClose={() => setFavOpen(false)}
+        />
+      )}
+
+      {changeTarget && (
+        <ChangeMealModal
+          recetas={recetas}
+          onGenerateAI={() => {
+            const t = changeTarget;
+            setChangeTarget(null);
+            void regenerateSlotAI(t.dia, t.slot);
+          }}
+          onPickReceta={(receta) =>
+            assignRecipe(changeTarget.dia, changeTarget.slot, receta)
+          }
+          onClose={() => setChangeTarget(null)}
         />
       )}
     </main>
