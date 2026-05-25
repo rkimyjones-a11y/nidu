@@ -15,13 +15,20 @@ export const RECETA_CATEGORIAS = [
 export type RecetaDraft = Omit<Receta, "id">;
 
 type Props = {
-  initial: Receta | null;
+  initial: RecetaDraft | null;
   saving?: boolean;
+  banner?: string;
   onSave: (draft: RecetaDraft) => void;
   onClose: () => void;
 };
 
-export function RecetaModal({ initial, saving = false, onSave, onClose }: Props) {
+export function RecetaModal({
+  initial,
+  saving = false,
+  banner,
+  onSave,
+  onClose,
+}: Props) {
   const [nombre, setNombre] = useState(initial?.nombre ?? "");
   const [tiempo, setTiempo] = useState(
     initial?.tiempo != null ? String(initial.tiempo) : "",
@@ -97,6 +104,12 @@ export function RecetaModal({ initial, saving = false, onSave, onClose }: Props)
             ✕
           </button>
         </div>
+
+        {banner && (
+          <div className="mt-4 rounded-lg bg-green-50 px-3 py-2 text-sm font-medium text-green-700">
+            {banner}
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="mt-5 space-y-5">
           <div>

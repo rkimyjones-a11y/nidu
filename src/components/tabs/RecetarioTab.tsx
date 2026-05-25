@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { RecetaModal, type RecetaDraft } from "@/components/RecetaModal";
+import { ScanRecetaModal } from "@/components/ScanRecetaModal";
 import type { Receta, RecetaOrigen } from "@/lib/db";
 
 type Props = {
@@ -17,20 +18,39 @@ const ORIGEN_BADGE: Record<RecetaOrigen, string> = {
   favorita: "❤️ Favorita",
 };
 
+const SCAN_BANNER = "✨ Receta escaneada — revisa los datos antes de guardar";
+
 export function RecetarioTab({ recetas, onAdd, onEdit, onRemove }: Props) {
   const [modalOpen, setModalOpen] = useState(false);
-  const [editing, setEditing] = useState<Receta | null>(null);
+  const [scanOpen, setScanOpen] = useState(false);
+  const [modalInitial, setModalInitial] = useState<RecetaDraft | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [banner, setBanner] = useState<string | undefined>(undefined);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
 
   const openNew = () => {
-    setEditing(null);
+    setModalInitial(null);
+    setEditingId(null);
+    setBanner(undefined);
     setError(null);
     setModalOpen(true);
   };
 
   const openEdit = (receta: Receta) => {
-    setEditing(receta);
+    setModalInitial(receta);
+    setEditingId(receta.id);
+    setBanner(undefined);
+    setError(null);
+    setModalOpen(true);
+  };
+
+  const handleScanned = (draft: RecetaDraft) => {
+    setScanOpen(false);
+    setModalInitial(draft);
+    setEditingId(null);
+    setBanner(SCAN_BANNER);
     setError(null);
     setModalOpen(true);
   };
@@ -39,10 +59,14 @@ export function RecetarioTab({ recetas, onAdd, onEdit, onRemove }: Props) {
     setSaving(true);
     setError(null);
     try {
-      if (editing) {
-        await onEdit({ ...editing, ...draft });
+      if (editingId) {
+        await onEdit({ ...draft, id: editingId });
       } else {
         await onAdd(draft);
+        if (draft.origen === "escaneada") {
+          setToast("¡Receta guardada! Ya puedes usarla en tu menú");
+          setTimeout(() => setToast(null), 3000);
+        }
       }
       setModalOpen(false);
     } catch (err) {
@@ -73,14 +97,32 @@ export function RecetarioTab({ recetas, onAdd, onEdit, onRemove }: Props) {
               : `${recetas.length} ${recetas.length === 1 ? "receta" : "recetas"}`}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={openNew}
-          className="shrink-0 rounded-lg bg-green-600 px-3 py-2 text-sm font-medium text-white shadow-sm hover:bg-green-700"
-        >
-          + Nueva receta
-        </button>
+        <div className="flex shrink-0 flex-col items-end gap-2">
+          <button
+            type="button"
+            onClick={openNew}
+            className="rounded-lg bg-green-600 px-3 py-2 text-sm font-medium text-white shadow-sm hover:bg-green-700"
+          >
+            + Nueva receta
+          </button>
+          <button
+            type="button"
+            onClick={() => setScanOpen(true)}
+            className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:border-green-600 hover:text-green-700"
+          >
+            📷 Escanear receta
+          </button>
+        </div>
       </header>
+
+      {toast && (
+        <div
+          role="status"
+          className="mt-4 rounded-lg bg-green-50 px-3 py-2 text-sm font-medium text-green-700"
+        >
+          {toast}
+        </div>
+      )}
 
       {error && (
         <p className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
@@ -139,10 +181,18 @@ export function RecetarioTab({ recetas, onAdd, onEdit, onRemove }: Props) {
 
       {modalOpen && (
         <RecetaModal
-          initial={editing}
+          initial={modalInitial}
+          banner={banner}
           saving={saving}
           onSave={handleSave}
           onClose={() => setModalOpen(false)}
+        />
+      )}
+
+      {scanOpen && (
+        <ScanRecetaModal
+          onScanned={handleScanned}
+          onClose={() => setScanOpen(false)}
         />
       )}
     </main>
