@@ -31,6 +31,16 @@ type Props = {
 
 const slotKey = (dia: SpanishDay, slot: MealSlot) => `${dia}::${slot}`;
 
+// Mensajes que van rotando mientras Gemini genera el menú completo.
+const PROGRESS_MESSAGES = [
+  "Eligiendo platos para el lunes…",
+  "Equilibrando proteínas de la semana…",
+  "Revisando restricciones de la familia…",
+  "Preparando la lista de la compra…",
+  "¡Casi listo!",
+];
+const PROGRESS_TICK_MS = 3000;
+
 // ---- Conversión receta → plato del menú ------------------------------------
 
 const recetaCatToShopping = (c: string): Category => {
@@ -111,6 +121,18 @@ export function MenuTab({
   const [error, setError] = useState<string | null>(null);
   const [regenerating, setRegenerating] = useState<Set<string>>(new Set());
   const [favOpen, setFavOpen] = useState(false);
+  const [progressIndex, setProgressIndex] = useState(0);
+
+  // Mensajes que cambian cada 3s durante la generación del menú semanal.
+  useEffect(() => {
+    if (!loading) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setProgressIndex(0);
+    const id = setInterval(() => {
+      setProgressIndex((i) => Math.min(i + 1, PROGRESS_MESSAGES.length - 1));
+    }, PROGRESS_TICK_MS);
+    return () => clearInterval(id);
+  }, [loading]);
   const [changeTarget, setChangeTarget] = useState<{
     dia: SpanishDay;
     slot: MealSlot;
@@ -308,8 +330,12 @@ export function MenuTab({
           <p className="mt-4 text-base font-medium text-gray-700">
             Generando tu menú…
           </p>
-          <p className="mt-1 text-sm text-gray-500">
-            Estamos pensando 14 platos a medida de tu familia.
+          <p
+            key={progressIndex}
+            className="mt-1 animate-pulse text-sm text-gray-500"
+            aria-live="polite"
+          >
+            {PROGRESS_MESSAGES[progressIndex]}
           </p>
         </div>
       )}
