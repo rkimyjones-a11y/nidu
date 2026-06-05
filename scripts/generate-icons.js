@@ -1,35 +1,33 @@
-// Genera los iconos PWA (192 y 512) en public/.
+// Genera los iconos PWA (192 y 512) a partir de public/Nidu_logo.png.
 // Uso: node scripts/generate-icons.js
 //
-// Implementado con sharp (binarios prebuilt; funciona en Windows sin
-// build tools). El paquete `canvas` requiere Cairo + VS Build Tools y
-// no es viable out-of-the-box, así que renderizamos un SVG y dejamos
-// que sharp lo rasterice.
+// Sharp se usa porque sus binarios prebuilt funcionan en Windows sin
+// build tools; el paquete `canvas` no es viable out-of-the-box.
 
 const fs = require("node:fs");
 const path = require("node:path");
 const sharp = require("sharp");
 
-const BG = "#16a34a";
-const FG = "#ffffff";
-
-function buildSvg(size) {
-  const radius = Math.round(size * 0.2);
-  const fontSize = Math.round(size * 0.5);
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
-  <rect x="0" y="0" width="${size}" height="${size}" rx="${radius}" ry="${radius}" fill="${BG}"/>
-  <text x="50%" y="50%" font-family="Georgia, 'Times New Roman', serif" font-weight="700" font-size="${fontSize}" fill="${FG}" text-anchor="middle" dominant-baseline="central">Nú</text>
-</svg>`;
-}
+const SRC = path.join(__dirname, "..", "public", "Nidu_logo.png");
+const OUT_DIR = path.join(__dirname, "..", "public");
 
 async function main() {
-  const outDir = path.join(__dirname, "..", "public");
-  fs.mkdirSync(outDir, { recursive: true });
+  if (!fs.existsSync(SRC)) {
+    throw new Error(`No encuentro el logo fuente en ${SRC}`);
+  }
+  fs.mkdirSync(OUT_DIR, { recursive: true });
 
   for (const size of [192, 512]) {
-    const svg = Buffer.from(buildSvg(size));
-    const out = path.join(outDir, `icon-${size}.png`);
-    await sharp(svg).png().toFile(out);
+    const out = path.join(OUT_DIR, `icon-${size}.png`);
+    await sharp(SRC)
+      // contain + fondo blanco: si en el futuro el logo no es cuadrado
+      // queda centrado con padding blanco en vez de recortarse.
+      .resize(size, size, {
+        fit: "contain",
+        background: { r: 255, g: 255, b: 255, alpha: 1 },
+      })
+      .png()
+      .toFile(out);
     console.log("✓", path.relative(process.cwd(), out));
   }
 }

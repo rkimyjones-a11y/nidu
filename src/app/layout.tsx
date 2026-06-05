@@ -24,6 +24,7 @@ export const metadata: Metadata = {
     statusBarStyle: "default",
   },
   icons: {
+    icon: "/Nidu_logo.png",
     apple: "/icon-192.png",
   },
 };
