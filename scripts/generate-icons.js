@@ -8,7 +8,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const sharp = require("sharp");
 
-const SRC = path.join(__dirname, "..", "public", "Nidu_logo.png");
+const SRC = path.join(__dirname, "..", "public", "Nidu_logo2.png");
 const OUT_DIR = path.join(__dirname, "..", "public");
 
 async function main() {
