@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { InstallBanner } from "@/components/InstallPWA";
 import { Logo } from "@/components/Logo";
 import { createFamilia, getFamiliaByCodigo, type Familia } from "@/lib/db";
 
@@ -118,6 +119,7 @@ export function Welcome({ onReady }: Props) {
               >
                 Crear mi familia
               </button>
+              <InstallBanner />
               <button
                 type="button"
                 onClick={() => {

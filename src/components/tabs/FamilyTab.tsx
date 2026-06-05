@@ -1,6 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import {
+  InstallSettingsRow,
+  ShareNiduRow,
+} from "@/components/InstallPWA";
 import { MemberCard } from "@/components/MemberCard";
 import { MemberModal, type MemberDraft } from "@/components/MemberModal";
 import type { Familia } from "@/lib/db";
@@ -156,6 +160,16 @@ export function FamilyTab({
           Añadir miembro
         </button>
       </div>
+
+      <section className="mt-10">
+        <h2 className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+          Aplicación
+        </h2>
+        <div className="mt-2 divide-y divide-gray-100 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+          <InstallSettingsRow />
+          <ShareNiduRow />
+        </div>
+      </section>
 
       {modalOpen && (
         <MemberModal
