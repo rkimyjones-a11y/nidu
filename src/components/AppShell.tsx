@@ -202,7 +202,7 @@ export function AppShell({ familiaId, onLeave }: Props) {
         </div>
       </header>
 
-      <div className="pb-20">
+      <div className="pb-[calc(5rem+env(safe-area-inset-bottom))]">
         {activeTab === "familia" && (
           <FamilyTab
             familia={familia}
